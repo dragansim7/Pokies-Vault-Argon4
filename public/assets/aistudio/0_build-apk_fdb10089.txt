@@ -1,0 +1,297 @@
+﻿2026-11-11T12:07:58.4597025Z Current runner version: '2.338.2'
+2026-11-11T12:07:58.4615924Z ##[group]Runner Image Provisioner
+2026-11-11T12:07:58.4616500Z Hosted Compute Agent
+2026-11-11T12:07:58.4616900Z Version: 20261028.624
+2026-11-11T12:07:58.4617325Z Commit: 54898b74c23fde5556c9b3c3a2290865feef0dfe
+2026-11-11T12:07:58.4617762Z Build Date: 2026-10-28T21:51:42Z
+2026-11-11T12:07:58.4618207Z Worker ID: {8db2406b-cae0-4823-94bc-a6a1124264e3}
+2026-11-11T12:07:58.4618636Z Region: centralus
+2026-11-11T12:07:58.4618963Z Cloud: Azure
+2026-11-11T12:07:58.4619369Z ##[endgroup]
+2026-11-11T12:07:58.4620323Z ##[group]Operating System
+2026-11-11T12:07:58.4620728Z Ubuntu
+2026-11-11T12:07:58.4621086Z 26.04.1
+2026-11-11T12:07:58.4621387Z LTS
+2026-11-11T12:07:58.4621781Z ##[endgroup]
+2026-11-11T12:07:58.4622117Z ##[group]Runner Image
+2026-11-11T12:07:58.4622746Z Image: ubuntu-26.04
+2026-11-11T12:07:58.4623103Z Version: 20261101.186.1
+2026-11-11T12:07:58.4623950Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261101.186/images/ubuntu/Ubuntu2604-Readme.md
+2026-11-11T12:07:58.4624932Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261101.186
+2026-11-11T12:07:58.4625520Z ##[endgroup]
+2026-11-11T12:07:58.4626209Z ##[group]GITHUB_TOKEN Permissions
+2026-11-11T12:07:58.4627694Z Contents: write
+2026-11-11T12:07:58.4628061Z Metadata: read
+2026-11-11T12:07:58.4628403Z ##[endgroup]
+2026-11-11T12:07:58.4629836Z Secret source: Actions
+2026-11-11T12:07:58.4630393Z Cache mode: write
+2026-11-11T12:07:58.4630906Z Prepare workflow directory
+2026-11-11T12:07:58.4849692Z Prepare all required actions
+2026-11-11T12:07:58.4885036Z Getting action download info
+2026-11-11T12:07:58.7659596Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-11T12:07:58.8768590Z Download action repository 'actions/setup-java@v4' (SHA:cf277c60eb25467037889841efdb72551f06f6c3)
+2026-11-11T12:07:59.3371098Z Download action repository 'gradle/actions@v4' (SHA:ed408507eac070d1f99cc633dbcf757c94c7933a)
+2026-11-11T12:08:00.3179940Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-11-11T12:08:00.4272442Z Download action repository 'softprops/action-gh-release@v2' (SHA:3bb12739c298aeb8a4eeaf626c5b8d85266b0e65)
+2026-11-11T12:08:00.8005334Z Complete job name: build-apk
+2026-11-11T12:08:00.8532165Z ##[group]Run actions/checkout@v4
+2026-11-11T12:08:00.8532491Z with:
+2026-11-11T12:08:00.8532648Z   repository: dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:00.8534602Z   token: ***
+2026-11-11T12:08:00.8534742Z   ssh-strict: true
+2026-11-11T12:08:00.8535076Z   ssh-user: git
+2026-11-11T12:08:00.8535249Z   persist-credentials: true
+2026-11-11T12:08:00.8535419Z   clean: true
+2026-11-11T12:08:00.8535568Z   sparse-checkout-cone-mode: true
+2026-11-11T12:08:00.8535763Z   fetch-depth: 1
+2026-11-11T12:08:00.8535914Z   fetch-tags: false
+2026-11-11T12:08:00.8536082Z   show-progress: true
+2026-11-11T12:08:00.8536217Z   lfs: false
+2026-11-11T12:08:00.8536349Z   submodules: false
+2026-11-11T12:08:00.8536527Z   set-safe-directory: true
+2026-11-11T12:08:00.8536720Z   allow-unsafe-pr-checkout: false
+2026-11-11T12:08:00.8536992Z ##[endgroup]
+2026-11-11T12:08:01.0881747Z Syncing repository: dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:01.0882742Z ##[group]Getting Git version info
+2026-11-11T12:08:01.0883121Z Working directory is '/home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4'
+2026-11-11T12:08:01.0883666Z [command]/usr/bin/git version
+2026-11-11T12:08:01.0883898Z git version 2.56.0
+2026-11-11T12:08:01.0898015Z ##[endgroup]
+2026-11-11T12:08:01.0903783Z Temporarily overriding HOME='/home/runner/work/_temp/3f838698-90f4-4539-91a2-345acad1168b' before making global git config changes
+2026-11-11T12:08:01.0904482Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-11T12:08:01.0908733Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4
+2026-11-11T12:08:01.0980395Z Deleting the contents of '/home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4'
+2026-11-11T12:08:01.0988445Z ##[group]Initializing the repository
+2026-11-11T12:08:01.0993085Z [command]/usr/bin/git init /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4
+2026-11-11T12:08:01.1087986Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-11T12:08:01.1088908Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-11T12:08:01.1089547Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-11T12:08:01.1090056Z hint: call:
+2026-11-11T12:08:01.1090228Z hint:
+2026-11-11T12:08:01.1090567Z hint: 	git config --global init.defaultBranch <name>
+2026-11-11T12:08:01.1090867Z hint:
+2026-11-11T12:08:01.1091132Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-11T12:08:01.1091619Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-11T12:08:01.1091993Z hint:
+2026-11-11T12:08:01.1092211Z hint: 	git branch -m <name>
+2026-11-11T12:08:01.1092439Z hint:
+2026-11-11T12:08:01.1092751Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-11T12:08:01.1097549Z Initialized empty Git repository in /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/.git/
+2026-11-11T12:08:01.1110204Z [command]/usr/bin/git remote add origin https://github.com/dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:01.1170423Z ##[endgroup]
+2026-11-11T12:08:01.1170901Z ##[group]Disabling automatic garbage collection
+2026-11-11T12:08:01.1174747Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-11T12:08:01.1207468Z ##[endgroup]
+2026-11-11T12:08:01.1207808Z ##[group]Setting up auth
+2026-11-11T12:08:01.1214191Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-11T12:08:01.1248397Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-11T12:08:01.1648194Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-11T12:08:01.1680070Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-11T12:08:01.1910271Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-11T12:08:01.1945439Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-11T12:08:01.2172592Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-11T12:08:01.2214258Z ##[endgroup]
+2026-11-11T12:08:01.2214703Z ##[group]Fetching the repository
+2026-11-11T12:08:01.2221201Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +198a0ae956368a5da49c531bf2a00b14a01a3683:refs/remotes/origin/main
+2026-11-11T12:08:02.0502300Z From https://github.com/dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:02.0502702Z  * [new ref]         198a0ae956368a5da49c531bf2a00b14a01a3683 -> origin/main
+2026-11-11T12:08:02.0515037Z ##[endgroup]
+2026-11-11T12:08:02.0515324Z ##[group]Determining the checkout info
+2026-11-11T12:08:02.0515596Z ##[endgroup]
+2026-11-11T12:08:02.0517008Z [command]/usr/bin/git sparse-checkout disable
+2026-11-11T12:08:02.0626432Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-11T12:08:02.0665853Z ##[group]Checking out the ref
+2026-11-11T12:08:02.0666663Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-11-11T12:08:02.0973428Z Switched to a new branch 'main'
+2026-11-11T12:08:02.0981165Z branch 'main' set up to track 'origin/main'.
+2026-11-11T12:08:02.0986831Z ##[endgroup]
+2026-11-11T12:08:02.1032945Z [command]/usr/bin/git log -1 --format=%H
+2026-11-11T12:08:02.1060868Z 198a0ae956368a5da49c531bf2a00b14a01a3683
+2026-11-11T12:08:02.1302205Z ##[group]Run actions/setup-java@v4
+2026-11-11T12:08:02.1302393Z with:
+2026-11-11T12:08:02.1302523Z   distribution: temurin
+2026-11-11T12:08:02.1302654Z   java-version: 17
+2026-11-11T12:08:02.1302777Z   java-package: jdk
+2026-11-11T12:08:02.1302903Z   check-latest: false
+2026-11-11T12:08:02.1303029Z   server-id: github
+2026-11-11T12:08:02.1303160Z   server-username: GITHUB_ACTOR
+2026-11-11T12:08:02.1303319Z   server-password: GITHUB_TOKEN
+2026-11-11T12:08:02.1303469Z   overwrite-settings: true
+2026-11-11T12:08:02.1303713Z   job-status: success
+2026-11-11T12:08:02.1306009Z   token: ***
+2026-11-11T12:08:02.1306142Z ##[endgroup]
+2026-11-11T12:08:02.2523831Z ##[warning]setup-java v4 is deprecated and will no longer receive updates. Please migrate to actions/setup-java@v5.
+2026-11-11T12:08:02.2528965Z ##[group]Installed distributions
+2026-11-11T12:08:02.2725042Z Resolved Java 17.0.21+9 from tool-cache
+2026-11-11T12:08:02.2725397Z Setting Java 17.0.21+9 as the default
+2026-11-11T12:08:02.2733501Z (node:2192) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-11T12:08:02.2734189Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-11T12:08:02.2736459Z Creating toolchains.xml for JDK version 17 from temurin
+2026-11-11T12:08:02.2782878Z Writing to /home/runner/.m2/toolchains.xml
+2026-11-11T12:08:02.2783239Z 
+2026-11-11T12:08:02.2783481Z Java configuration:
+2026-11-11T12:08:02.2783697Z   Distribution: temurin
+2026-11-11T12:08:02.2783881Z   Version: 17.0.21+9
+2026-11-11T12:08:02.2784179Z   Path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:02.2784408Z 
+2026-11-11T12:08:02.2784808Z ##[endgroup]
+2026-11-11T12:08:02.2803846Z Creating settings.xml with server-id: github
+2026-11-11T12:08:02.2819980Z Writing to /home/runner/.m2/settings.xml
+2026-11-11T12:08:02.3108838Z ##[group]Run gradle/actions/setup-gradle@v4
+2026-11-11T12:08:02.3109102Z with:
+2026-11-11T12:08:02.3109231Z   gradle-version: 8.11.1
+2026-11-11T12:08:02.3109372Z   cache-disabled: false
+2026-11-11T12:08:02.3109504Z   cache-read-only: false
+2026-11-11T12:08:02.3109640Z   cache-write-only: false
+2026-11-11T12:08:02.3109786Z   cache-overwrite-existing: false
+2026-11-11T12:08:02.3109942Z   cache-cleanup: on-success
+2026-11-11T12:08:02.3110118Z   gradle-home-cache-includes: caches
+notifications
+
+2026-11-11T12:08:02.3110309Z   add-job-summary: always
+2026-11-11T12:08:02.3110466Z   add-job-summary-as-pr-comment: never
+2026-11-11T12:08:02.3110633Z   dependency-graph: disabled
+2026-11-11T12:08:02.3110812Z   dependency-graph-report-dir: dependency-graph-reports
+2026-11-11T12:08:02.3111025Z   dependency-graph-continue-on-failure: true
+2026-11-11T12:08:02.3111200Z   build-scan-publish: false
+2026-11-11T12:08:02.3111346Z   validate-wrappers: true
+2026-11-11T12:08:02.3111543Z   allow-snapshot-wrappers: false
+2026-11-11T12:08:02.3111711Z   gradle-home-cache-strict-match: false
+2026-11-11T12:08:02.3111878Z   workflow-job-context: null
+2026-11-11T12:08:02.3113517Z   github-token: ***
+2026-11-11T12:08:02.3113645Z env:
+2026-11-11T12:08:02.3113821Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:02.3114100Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:02.3114316Z ##[endgroup]
+2026-11-11T12:08:03.6019762Z Merged default JDK locations into /home/runner/.m2/toolchains.xml
+2026-11-11T12:08:03.6020791Z Preparing cache for cleanup.
+2026-11-11T12:08:03.6023945Z ##[group]Restore Gradle state from cache
+2026-11-11T12:08:03.7248746Z Gradle User Home cache not found. Will initialize empty.
+2026-11-11T12:08:03.7249262Z ##[endgroup]
+2026-11-11T12:08:03.7297521Z ##[group]All Gradle Wrapper jars are valid
+2026-11-11T12:08:03.7298103Z 
+2026-11-11T12:08:03.7298463Z ##[endgroup]
+2026-11-11T12:08:03.8187416Z ##[group]Provision Gradle 8.11.1
+2026-11-11T12:08:07.1213744Z Gradle distribution 8.11.1 not found in cache. Will download.
+2026-11-11T12:08:07.7148233Z Downloaded https://services.gradle.org/distributions/gradle-8.11.1-bin.zip to /home/runner/work/_temp/.gradle-actions/gradle-installations/downloads/gradle-8.11.1-bin.zip (size 136920070)
+2026-11-11T12:08:07.7275076Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:08:08.9426660Z Sent 2344466 of 136562194 (1.7%), 2.2 MBs/sec
+2026-11-11T12:08:09.9406594Z Sent 69453330 of 136562194 (50.9%), 33.1 MBs/sec
+2026-11-11T12:08:10.1215307Z Sent 136562194 of 136562194 (100.0%), 59.7 MBs/sec
+2026-11-11T12:08:10.3370234Z [command]/usr/bin/unzip -o -q /home/runner/work/_temp/.gradle-actions/gradle-installations/downloads/gradle-8.11.1-bin.zip
+2026-11-11T12:08:11.0543879Z Extracted Gradle 8.11.1 to /home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1
+2026-11-11T12:08:11.0544706Z Provisioned Gradle executable /home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1/bin/gradle
+2026-11-11T12:08:11.0545623Z ##[endgroup]
+2026-11-11T12:08:11.0732240Z ##[group]Run gradle assembleDebug --no-daemon
+2026-11-11T12:08:11.0732499Z [36;1mgradle assembleDebug --no-daemon[0m
+2026-11-11T12:08:11.0775480Z shell: /usr/bin/bash -e {0}
+2026-11-11T12:08:11.0775647Z env:
+2026-11-11T12:08:11.0775833Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:11.0776112Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:11.0776368Z   GRADLE_ACTION_ID: gradle/actions/setup-gradle
+2026-11-11T12:08:11.0776545Z   GRADLE_USER_HOME: /home/runner/.gradle
+2026-11-11T12:08:11.0776722Z   GRADLE_BUILD_ACTION_SETUP_COMPLETED: true
+2026-11-11T12:08:11.0776897Z   GRADLE_BUILD_ACTION_CACHE_RESTORED: true
+2026-11-11T12:08:11.0777162Z   DEVELOCITY_INJECTION_INIT_SCRIPT_NAME: gradle-actions.inject-develocity.init.gradle
+2026-11-11T12:08:11.0777451Z   DEVELOCITY_INJECTION_CUSTOM_VALUE: gradle-actions
+2026-11-11T12:08:11.0777666Z   GITHUB_DEPENDENCY_GRAPH_ENABLED: false
+2026-11-11T12:08:11.0777867Z ##[endgroup]
+2026-11-11T12:08:11.5486173Z 
+2026-11-11T12:08:11.5486796Z Welcome to Gradle 8.11.1!
+2026-11-11T12:08:11.5487062Z 
+2026-11-11T12:08:11.5487208Z Here are the highlights of this release:
+2026-11-11T12:08:11.5488260Z  - Parallel load and store for Configuration Cache
+2026-11-11T12:08:11.5489686Z  - Java compilation errors at the end of the build output
+2026-11-11T12:08:11.5492960Z  - Consolidated report for warnings and deprecations
+2026-11-11T12:08:11.5493190Z 
+2026-11-11T12:08:11.5493380Z For more details see https://docs.gradle.org/8.11.1/release-notes.html
+2026-11-11T12:08:11.5493625Z 
+2026-11-11T12:08:11.6510213Z To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+2026-11-11T12:08:12.7476854Z Daemon will be stopped at the end of the build 
+2026-11-11T12:08:58.7482808Z 
+2026-11-11T12:08:58.7498667Z > Configure project :app
+2026-11-11T12:08:58.7505371Z w: file:///home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/build.gradle.kts:38:9: 'jvmTarget: String' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
+2026-11-11T12:09:00.8480825Z 
+2026-11-11T12:09:00.8482065Z > Task :app:preBuild UP-TO-DATE
+2026-11-11T12:09:00.8482399Z > Task :app:preDebugBuild UP-TO-DATE
+2026-11-11T12:09:00.9478583Z > Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+2026-11-11T12:09:00.9488638Z > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+2026-11-11T12:09:16.3492396Z > Task :app:generateDebugResValues
+2026-11-11T12:09:16.3493000Z > Task :app:checkDebugAarMetadata
+2026-11-11T12:09:16.3497013Z > Task :app:processDebugGoogleServices FAILED
+2026-11-11T12:09:16.3497699Z gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1794398895575.json
+2026-11-11T12:09:16.4504478Z 
+2026-11-11T12:09:16.4517134Z 3 actionable tasks: 3 executed
+2026-11-11T12:09:16.4525286Z FAILURE: Build failed with an exception.
+2026-11-11T12:09:16.4530119Z 
+2026-11-11T12:09:16.4530588Z * What went wrong:
+2026-11-11T12:09:16.4531069Z Execution failed for task ':app:processDebugGoogleServices'.
+2026-11-11T12:09:16.4531582Z > File google-services.json is missing.
+2026-11-11T12:09:16.4532089Z   The Google Services Plugin cannot function without it.
+2026-11-11T12:09:16.4534395Z   Searched locations: /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/Debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/google-services.json
+2026-11-11T12:09:16.4537770Z 
+2026-11-11T12:09:16.4538066Z * Try:
+2026-11-11T12:09:16.4538524Z > Run with --stacktrace option to get the stack trace.
+2026-11-11T12:09:16.4539092Z > Run with --info or --debug option to get more log output.
+2026-11-11T12:09:16.4539562Z > Run with --scan to get full insights.
+2026-11-11T12:09:16.4540057Z > Get more help at https://help.gradle.org.
+2026-11-11T12:09:16.4540566Z 
+2026-11-11T12:09:16.4540862Z BUILD FAILED in 1m 5s
+2026-11-11T12:09:16.7052463Z ##[error]Process completed with exit code 1.
+2026-11-11T12:09:16.7193853Z Post job cleanup.
+2026-11-11T12:09:16.9000462Z In post-action step
+2026-11-11T12:09:16.9008549Z ##[group]Stopping Gradle daemons
+2026-11-11T12:09:16.9008942Z Stopping Gradle daemons for /home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1
+2026-11-11T12:09:16.9019237Z [command]/home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1/bin/gradle --stop
+2026-11-11T12:09:17.4325167Z No Gradle daemons are running.
+2026-11-11T12:09:17.4448860Z ##[endgroup]
+2026-11-11T12:09:17.4449171Z Not performing cache-cleanup due to build failure
+2026-11-11T12:09:17.4449652Z ##[group]Caching Gradle state
+2026-11-11T12:09:17.4645371Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8370167Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8552548Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8642329Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.1528753Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.1631761Z Sent 72038 of 72038 (100.0%), 0.4 MBs/sec
+2026-11-11T12:09:18.2114670Z Sent 111081 of 111081 (100.0%), 0.5 MBs/sec
+2026-11-11T12:09:18.2862717Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.2966395Z Sent 121854 of 121854 (100.0%), 0.4 MBs/sec
+2026-11-11T12:09:18.3607034Z Saved cache entry with key gradle-instrumented-jars-v1-5c3624ee36672d86f0fbb4ed59cf1fd5 from /home/runner/.gradle/caches/jars-*/*/ in 533ms
+2026-11-11T12:09:18.3879227Z Saved cache entry with key gradle-groovy-dsl-v1-5c46b738d95f8c3325e6ebbb5b8aa335 from /home/runner/.gradle/caches/*/groovy-dsl/*/ in 545ms
+2026-11-11T12:09:18.4786272Z Saved cache entry with key gradle-kotlin-dsl-v1-f3117226cf77be673912e1de0f0fd897 from /home/runner/.gradle/caches/*/kotlin-dsl/accessors/*/,/home/runner/.gradle/caches/*/kotlin-dsl/scripts/*/ in 647ms
+2026-11-11T12:09:18.9376668Z Sent 40897892 of 40897892 (100.0%), 39.0 MBs/sec
+2026-11-11T12:09:19.2146632Z Saved cache entry with key gradle-generated-gradle-jars-v1-162ec066fc0a1bae82804bbc69cfff33 from /home/runner/.gradle/caches/8.11.1/generated-gradle-jars/gradle-api-8.11.1.jar in 1759ms
+2026-11-11T12:09:19.8200124Z Sent 0 of 195099141 (0.0%), 0.0 MBs/sec
+2026-11-11T12:09:20.2496213Z Sent 10638609 of 144856337 (7.3%), 10.1 MBs/sec
+2026-11-11T12:09:20.3579684Z Sent 195099141 of 195099141 (100.0%), 121.0 MBs/sec
+2026-11-11T12:09:20.5378894Z Saved cache entry with key gradle-dependencies-v1-bf327019cdcc34da8a8e1b2a749a2f01 from /home/runner/.gradle/caches/modules-*/files-*/*/*/*/* in 2724ms
+2026-11-11T12:09:21.2467147Z Sent 77747473 of 144856337 (53.7%), 37.1 MBs/sec
+2026-11-11T12:09:22.2474004Z Sent 77747473 of 144856337 (53.7%), 24.7 MBs/sec
+2026-11-11T12:09:23.2485106Z Sent 77747473 of 144856337 (53.7%), 18.5 MBs/sec
+2026-11-11T12:09:24.1797639Z Sent 144856337 of 144856337 (100.0%), 28.0 MBs/sec
+2026-11-11T12:09:24.3349889Z Saved cache entry with key gradle-transforms-v1-c7ec2f9d2abc09c36a4c2cbc247cd90a from /home/runner/.gradle/caches/transforms-4/*/,/home/runner/.gradle/caches/*/transforms/*/ in 6292ms
+2026-11-11T12:09:24.9469510Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:25.3920189Z Sent 588171 of 588171 (100.0%), 2.2 MBs/sec
+2026-11-11T12:09:25.5398532Z Saved cache entry with key gradle-home-v1|Linux-X64|build-apk[8401e2e39a98ac4cabe3807621c11bf1]-198a0ae956368a5da49c531bf2a00b14a01a3683 from /home/runner/.gradle/caches,/home/runner/.gradle/notifications,/home/runner/.gradle/.setup-gradle in 606ms
+2026-11-11T12:09:25.5399990Z ##[endgroup]
+2026-11-11T12:09:25.5406166Z Generating Job Summary
+2026-11-11T12:09:25.5416423Z Completed post-action step
+2026-11-11T12:09:25.5685677Z Post job cleanup.
+2026-11-11T12:09:25.6738402Z (node:2674) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-11T12:09:25.6738909Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-11T12:09:25.6897190Z Post job cleanup.
+2026-11-11T12:09:25.7572361Z [command]/usr/bin/git version
+2026-11-11T12:09:25.7611380Z git version 2.56.0
+2026-11-11T12:09:25.7642669Z Temporarily overriding HOME='/home/runner/work/_temp/4f92bdfb-2674-475a-9cf3-27b62969dec6' before making global git config changes
+2026-11-11T12:09:25.7643307Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-11T12:09:25.7647624Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4
+2026-11-11T12:09:25.7696200Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-11T12:09:25.7742241Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-11T12:09:25.8050143Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-11T12:09:25.8081918Z http.https://github.com/.extraheader
+2026-11-11T12:09:25.8091575Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-11T12:09:25.8146464Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-11T12:09:25.8421675Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-11T12:09:25.8455302Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-11T12:09:25.8852947Z Cleaning up orphan processes
+2026-11-11T12:09:25.9118699Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-java@v4, gradle/actions/setup-gradle@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

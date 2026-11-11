@@ -1,0 +1,56 @@
+﻿2026-11-11T12:08:11.0732228Z ##[group]Run gradle assembleDebug --no-daemon
+2026-11-11T12:08:11.0732497Z [36;1mgradle assembleDebug --no-daemon[0m
+2026-11-11T12:08:11.0775466Z shell: /usr/bin/bash -e {0}
+2026-11-11T12:08:11.0775646Z env:
+2026-11-11T12:08:11.0775830Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:11.0776107Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.21-9/x64
+2026-11-11T12:08:11.0776366Z   GRADLE_ACTION_ID: gradle/actions/setup-gradle
+2026-11-11T12:08:11.0776544Z   GRADLE_USER_HOME: /home/runner/.gradle
+2026-11-11T12:08:11.0776720Z   GRADLE_BUILD_ACTION_SETUP_COMPLETED: true
+2026-11-11T12:08:11.0776895Z   GRADLE_BUILD_ACTION_CACHE_RESTORED: true
+2026-11-11T12:08:11.0777159Z   DEVELOCITY_INJECTION_INIT_SCRIPT_NAME: gradle-actions.inject-develocity.init.gradle
+2026-11-11T12:08:11.0777450Z   DEVELOCITY_INJECTION_CUSTOM_VALUE: gradle-actions
+2026-11-11T12:08:11.0777664Z   GITHUB_DEPENDENCY_GRAPH_ENABLED: false
+2026-11-11T12:08:11.0777826Z ##[endgroup]
+2026-11-11T12:08:11.5486112Z 
+2026-11-11T12:08:11.5486792Z Welcome to Gradle 8.11.1!
+2026-11-11T12:08:11.5487059Z 
+2026-11-11T12:08:11.5487204Z Here are the highlights of this release:
+2026-11-11T12:08:11.5488248Z  - Parallel load and store for Configuration Cache
+2026-11-11T12:08:11.5489684Z  - Java compilation errors at the end of the build output
+2026-11-11T12:08:11.5492951Z  - Consolidated report for warnings and deprecations
+2026-11-11T12:08:11.5493187Z 
+2026-11-11T12:08:11.5493377Z For more details see https://docs.gradle.org/8.11.1/release-notes.html
+2026-11-11T12:08:11.5493623Z 
+2026-11-11T12:08:11.6510156Z To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+2026-11-11T12:08:12.7476804Z Daemon will be stopped at the end of the build 
+2026-11-11T12:08:58.7482746Z 
+2026-11-11T12:08:58.7498608Z > Configure project :app
+2026-11-11T12:08:58.7505367Z w: file:///home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/build.gradle.kts:38:9: 'jvmTarget: String' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
+2026-11-11T12:09:00.8480766Z 
+2026-11-11T12:09:00.8482059Z > Task :app:preBuild UP-TO-DATE
+2026-11-11T12:09:00.8482395Z > Task :app:preDebugBuild UP-TO-DATE
+2026-11-11T12:09:00.9478530Z > Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+2026-11-11T12:09:00.9488626Z > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+2026-11-11T12:09:16.3492345Z > Task :app:generateDebugResValues
+2026-11-11T12:09:16.3492995Z > Task :app:checkDebugAarMetadata
+2026-11-11T12:09:16.3497005Z > Task :app:processDebugGoogleServices FAILED
+2026-11-11T12:09:16.3497695Z gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1794398895575.json
+2026-11-11T12:09:16.4504412Z 
+2026-11-11T12:09:16.4517059Z 3 actionable tasks: 3 executed
+2026-11-11T12:09:16.4525252Z FAILURE: Build failed with an exception.
+2026-11-11T12:09:16.4530099Z 
+2026-11-11T12:09:16.4530584Z * What went wrong:
+2026-11-11T12:09:16.4531066Z Execution failed for task ':app:processDebugGoogleServices'.
+2026-11-11T12:09:16.4531580Z > File google-services.json is missing.
+2026-11-11T12:09:16.4532087Z   The Google Services Plugin cannot function without it.
+2026-11-11T12:09:16.4534387Z   Searched locations: /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/src/Debug/google-services.json, /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/app/google-services.json
+2026-11-11T12:09:16.4537192Z 
+2026-11-11T12:09:16.4538062Z * Try:
+2026-11-11T12:09:16.4538521Z > Run with --stacktrace option to get the stack trace.
+2026-11-11T12:09:16.4539088Z > Run with --info or --debug option to get more log output.
+2026-11-11T12:09:16.4539560Z > Run with --scan to get full insights.
+2026-11-11T12:09:16.4540054Z > Get more help at https://help.gradle.org.
+2026-11-11T12:09:16.4540563Z 
+2026-11-11T12:09:16.4540860Z BUILD FAILED in 1m 5s
+2026-11-11T12:09:16.7052433Z ##[error]Process completed with exit code 1.

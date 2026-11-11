@@ -1,0 +1,38 @@
+﻿2026-11-11T12:09:16.7193839Z Post job cleanup.
+2026-11-11T12:09:16.9000411Z In post-action step
+2026-11-11T12:09:16.9008529Z ##[group]Stopping Gradle daemons
+2026-11-11T12:09:16.9008939Z Stopping Gradle daemons for /home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1
+2026-11-11T12:09:16.9019228Z [command]/home/runner/work/_temp/.gradle-actions/gradle-installations/installs/gradle-8.11.1/bin/gradle --stop
+2026-11-11T12:09:17.4325121Z No Gradle daemons are running.
+2026-11-11T12:09:17.4448800Z ##[endgroup]
+2026-11-11T12:09:17.4449159Z Not performing cache-cleanup due to build failure
+2026-11-11T12:09:17.4449649Z ##[group]Caching Gradle state
+2026-11-11T12:09:17.4645338Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8370026Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8552492Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:17.8642265Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.1528696Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.1631712Z Sent 72038 of 72038 (100.0%), 0.4 MBs/sec
+2026-11-11T12:09:18.2114616Z Sent 111081 of 111081 (100.0%), 0.5 MBs/sec
+2026-11-11T12:09:18.2862623Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:18.2966330Z Sent 121854 of 121854 (100.0%), 0.4 MBs/sec
+2026-11-11T12:09:18.3606972Z Saved cache entry with key gradle-instrumented-jars-v1-5c3624ee36672d86f0fbb4ed59cf1fd5 from /home/runner/.gradle/caches/jars-*/*/ in 533ms
+2026-11-11T12:09:18.3879179Z Saved cache entry with key gradle-groovy-dsl-v1-5c46b738d95f8c3325e6ebbb5b8aa335 from /home/runner/.gradle/caches/*/groovy-dsl/*/ in 545ms
+2026-11-11T12:09:18.4786221Z Saved cache entry with key gradle-kotlin-dsl-v1-f3117226cf77be673912e1de0f0fd897 from /home/runner/.gradle/caches/*/kotlin-dsl/accessors/*/,/home/runner/.gradle/caches/*/kotlin-dsl/scripts/*/ in 647ms
+2026-11-11T12:09:18.9376614Z Sent 40897892 of 40897892 (100.0%), 39.0 MBs/sec
+2026-11-11T12:09:19.2146584Z Saved cache entry with key gradle-generated-gradle-jars-v1-162ec066fc0a1bae82804bbc69cfff33 from /home/runner/.gradle/caches/8.11.1/generated-gradle-jars/gradle-api-8.11.1.jar in 1759ms
+2026-11-11T12:09:19.8200042Z Sent 0 of 195099141 (0.0%), 0.0 MBs/sec
+2026-11-11T12:09:20.2496158Z Sent 10638609 of 144856337 (7.3%), 10.1 MBs/sec
+2026-11-11T12:09:20.3579632Z Sent 195099141 of 195099141 (100.0%), 121.0 MBs/sec
+2026-11-11T12:09:20.5378833Z Saved cache entry with key gradle-dependencies-v1-bf327019cdcc34da8a8e1b2a749a2f01 from /home/runner/.gradle/caches/modules-*/files-*/*/*/*/* in 2724ms
+2026-11-11T12:09:21.2467096Z Sent 77747473 of 144856337 (53.7%), 37.1 MBs/sec
+2026-11-11T12:09:22.2473955Z Sent 77747473 of 144856337 (53.7%), 24.7 MBs/sec
+2026-11-11T12:09:23.2485056Z Sent 77747473 of 144856337 (53.7%), 18.5 MBs/sec
+2026-11-11T12:09:24.1797583Z Sent 144856337 of 144856337 (100.0%), 28.0 MBs/sec
+2026-11-11T12:09:24.3349840Z Saved cache entry with key gradle-transforms-v1-c7ec2f9d2abc09c36a4c2cbc247cd90a from /home/runner/.gradle/caches/transforms-4/*/,/home/runner/.gradle/caches/*/transforms/*/ in 6292ms
+2026-11-11T12:09:24.9469090Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4 --files-from manifest.txt --use-compress-program zstdmt
+2026-11-11T12:09:25.3920137Z Sent 588171 of 588171 (100.0%), 2.2 MBs/sec
+2026-11-11T12:09:25.5398487Z Saved cache entry with key gradle-home-v1|Linux-X64|build-apk[8401e2e39a98ac4cabe3807621c11bf1]-198a0ae956368a5da49c531bf2a00b14a01a3683 from /home/runner/.gradle/caches,/home/runner/.gradle/notifications,/home/runner/.gradle/.setup-gradle in 606ms
+2026-11-11T12:09:25.5399986Z ##[endgroup]
+2026-11-11T12:09:25.5406152Z Generating Job Summary
+2026-11-11T12:09:25.5416412Z Completed post-action step

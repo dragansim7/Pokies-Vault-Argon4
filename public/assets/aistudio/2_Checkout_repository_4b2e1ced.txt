@@ -1,0 +1,73 @@
+﻿2026-11-11T12:08:00.8532111Z ##[group]Run actions/checkout@v4
+2026-11-11T12:08:00.8532488Z with:
+2026-11-11T12:08:00.8532645Z   repository: dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:00.8534600Z   token: ***
+2026-11-11T12:08:00.8534740Z   ssh-strict: true
+2026-11-11T12:08:00.8535074Z   ssh-user: git
+2026-11-11T12:08:00.8535247Z   persist-credentials: true
+2026-11-11T12:08:00.8535417Z   clean: true
+2026-11-11T12:08:00.8535566Z   sparse-checkout-cone-mode: true
+2026-11-11T12:08:00.8535760Z   fetch-depth: 1
+2026-11-11T12:08:00.8535906Z   fetch-tags: false
+2026-11-11T12:08:00.8536075Z   show-progress: true
+2026-11-11T12:08:00.8536214Z   lfs: false
+2026-11-11T12:08:00.8536347Z   submodules: false
+2026-11-11T12:08:00.8536522Z   set-safe-directory: true
+2026-11-11T12:08:00.8536717Z   allow-unsafe-pr-checkout: false
+2026-11-11T12:08:00.8536990Z ##[endgroup]
+2026-11-11T12:08:01.0881680Z Syncing repository: dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:01.0882736Z ##[group]Getting Git version info
+2026-11-11T12:08:01.0882998Z Working directory is '/home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4'
+2026-11-11T12:08:01.0883663Z [command]/usr/bin/git version
+2026-11-11T12:08:01.0883891Z git version 2.56.0
+2026-11-11T12:08:01.0898006Z ##[endgroup]
+2026-11-11T12:08:01.0903765Z Temporarily overriding HOME='/home/runner/work/_temp/3f838698-90f4-4539-91a2-345acad1168b' before making global git config changes
+2026-11-11T12:08:01.0904479Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-11T12:08:01.0908728Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4
+2026-11-11T12:08:01.0980331Z Deleting the contents of '/home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4'
+2026-11-11T12:08:01.0988438Z ##[group]Initializing the repository
+2026-11-11T12:08:01.0993075Z [command]/usr/bin/git init /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4
+2026-11-11T12:08:01.1087875Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-11T12:08:01.1088902Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-11T12:08:01.1089544Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-11T12:08:01.1090052Z hint: call:
+2026-11-11T12:08:01.1090224Z hint:
+2026-11-11T12:08:01.1090564Z hint: 	git config --global init.defaultBranch <name>
+2026-11-11T12:08:01.1090865Z hint:
+2026-11-11T12:08:01.1091128Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-11T12:08:01.1091615Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-11T12:08:01.1091990Z hint:
+2026-11-11T12:08:01.1092207Z hint: 	git branch -m <name>
+2026-11-11T12:08:01.1092436Z hint:
+2026-11-11T12:08:01.1092748Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-11T12:08:01.1097526Z Initialized empty Git repository in /home/runner/work/Pokies-Vault-Argon4/Pokies-Vault-Argon4/.git/
+2026-11-11T12:08:01.1110183Z [command]/usr/bin/git remote add origin https://github.com/dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:01.1170356Z ##[endgroup]
+2026-11-11T12:08:01.1170896Z ##[group]Disabling automatic garbage collection
+2026-11-11T12:08:01.1174710Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-11T12:08:01.1207451Z ##[endgroup]
+2026-11-11T12:08:01.1207803Z ##[group]Setting up auth
+2026-11-11T12:08:01.1214182Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-11T12:08:01.1248367Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-11T12:08:01.1648113Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-11T12:08:01.1679531Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-11T12:08:01.1910182Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-11T12:08:01.1945376Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-11T12:08:01.2172519Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-11T12:08:01.2214197Z ##[endgroup]
+2026-11-11T12:08:01.2214699Z ##[group]Fetching the repository
+2026-11-11T12:08:01.2221183Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +198a0ae956368a5da49c531bf2a00b14a01a3683:refs/remotes/origin/main
+2026-11-11T12:08:02.0502227Z From https://github.com/dragansim7/Pokies-Vault-Argon4
+2026-11-11T12:08:02.0502699Z  * [new ref]         198a0ae956368a5da49c531bf2a00b14a01a3683 -> origin/main
+2026-11-11T12:08:02.0514966Z ##[endgroup]
+2026-11-11T12:08:02.0515321Z ##[group]Determining the checkout info
+2026-11-11T12:08:02.0515593Z ##[endgroup]
+2026-11-11T12:08:02.0517001Z [command]/usr/bin/git sparse-checkout disable
+2026-11-11T12:08:02.0626375Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-11T12:08:02.0665814Z ##[group]Checking out the ref
+2026-11-11T12:08:02.0666638Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-11-11T12:08:02.0973342Z Switched to a new branch 'main'
+2026-11-11T12:08:02.0981139Z branch 'main' set up to track 'origin/main'.
+2026-11-11T12:08:02.0986817Z ##[endgroup]
+2026-11-11T12:08:02.1032884Z [command]/usr/bin/git log -1 --format=%H
+2026-11-11T12:08:02.1060820Z 198a0ae956368a5da49c531bf2a00b14a01a3683

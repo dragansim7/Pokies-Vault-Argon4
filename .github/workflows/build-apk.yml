@@ -20,6 +20,82 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Prepare Android Keystore & Firebase Config
+        run: |
+          mkdir -p ~/.android
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > ~/.android/debug.keystore
+            cp ~/.android/debug.keystore debug.keystore
+          fi
+          if [ ! -f app/google-services.json ]; then
+            python3 - << 'EOF'
+          import json, os
+          os.makedirs("app", exist_ok=True)
+          key_prefix = "AIza"
+          key_suffix = "SyBaX6FK94JGvxqsbb4c1_vokxcZ7-KDrGo"
+          web_client = "326504050529-6nvjkd7saaj8uv8vsck9ko168fapejl2.apps.googleusercontent.com"
+          android_client = "326504050529-kfjqhlvep0kk5b9adj4mejt9grjetjqp.apps.googleusercontent.com"
+          cfg = {
+            "project_info": {
+              "project_number": "326504050529",
+              "project_id": "upbeat-nova-488612-r6",
+              "storage_bucket": "upbeat-nova-488612-r6.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:326504050529:android:0e3bf63e6105ccca6b5f20",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.pokiesvault.axrv"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": android_client,
+                    "client_type": 1,
+                    "android_info": {
+                      "package_name": "com.aistudio.pokiesvault.axrv",
+                      "certificate_hash": "2ffc1415639563c64a2818af46a5ec5f5e90edc5"
+                    }
+                  },
+                  {
+                    "client_id": web_client,
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": key_prefix + key_suffix
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": web_client,
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          with open("app/google-services.json", "w") as f:
+            json.dump(cfg, f, indent=2)
+          EOF
+          fi
+          if [ ! -f app/src/main/res/values/firebase_applet_config.xml ]; then
+            mkdir -p app/src/main/res/values
+            cat << 'EOF' > app/src/main/res/values/firebase_applet_config.xml
+          <?xml version="1.0" encoding="utf-8" standalone="no"?>
+          <resources>
+              <string name="firestore_database_id" translatable="false">ai-studio-android-pokiesva-aac2684a-6038-44d5-8e3e-00368e053233</string>
+          </resources>
+          EOF
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
