@@ -5,4 +5,5 @@ node_modules/
 .env.*
 artifacts/
 attachments/mobidevtools*
+*-debug.log
 

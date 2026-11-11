@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -15,7 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -24,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aistudio.pokiesvault.data.catalog.CatalogData
 import com.aistudio.pokiesvault.data.model.AccountResult
+import com.aistudio.pokiesvault.data.model.EgressIpInfo
 import com.aistudio.pokiesvault.ui.components.ResponsibleGamblingFooter
 import com.aistudio.pokiesvault.ui.components.ResultCard
 import com.aistudio.pokiesvault.ui.theme.*
@@ -104,7 +108,15 @@ fun FetcherScreen(
                 lineHeight = 16.sp
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Live Egress IP & Browser Header Profile Badge
+            EgressNetworkBadge(
+                info = uiState.egressIpInfo,
+                onRefresh = { viewModel.refreshEgressIp() }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Credentials Panel
             Surface(
@@ -506,3 +518,158 @@ fun FetcherScreen(
         }
     }
 }
+
+@Composable
+private fun EgressNetworkBadge(
+    info: EgressIpInfo,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalVaultColors.current
+    val statusColor = when {
+        info.isLoading -> colors.cyan
+        info.error != null -> colors.dead
+        info.isCloudOrHosting -> colors.slow
+        else -> colors.live
+    }
+
+    val badgeLabel = when {
+        info.isLoading -> "CHECKING IP…"
+        info.error != null -> "OFFLINE"
+        info.isCloudOrHosting -> "CLOUD PREVIEW IP"
+        else -> "LOCAL DEVICE IP"
+    }
+
+    val locationSuffix = buildString {
+        if (info.city.isNotBlank()) append(info.city)
+        if (info.countryCode.isNotBlank()) {
+            if (isNotEmpty()) append(", ")
+            append(info.countryCode)
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("egress_network_badge"),
+        shape = RoundedCornerShape(14.dp),
+        color = colors.panel2,
+        border = androidx.compose.foundation.BorderStroke(1.dp, statusColor.copy(alpha = 0.45f))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (info.isLoading) "Detecting outgoing IP…" else "Outgoing IP: ${info.ip}",
+                                color = colors.fg,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = statusColor.copy(alpha = 0.16f),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, statusColor.copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = badgeLabel,
+                                    color = statusColor,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val ispText = if (info.isLoading) {
+                            "Checking ISP & network route seen by target domains"
+                        } else {
+                            buildString {
+                                append(info.isp.ifBlank { "Direct Connection" })
+                                if (locationSuffix.isNotBlank()) {
+                                    append(" · ")
+                                    append(locationSuffix)
+                                }
+                            }
+                        }
+                        Text(
+                            text = ispText,
+                            color = colors.muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !info.isLoading,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("refresh_egress_ip_btn")
+                ) {
+                    if (info.isLoading) {
+                        CircularProgressIndicator(
+                            color = colors.cyan,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh public IP",
+                            tint = colors.cyan,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = null,
+                    tint = colors.cyan,
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = "Chrome 131 Mobile Headers · Client Hints · Zero JS/Hardware ID Sent",
+                    color = colors.faint,
+                    fontSize = 10.sp
+                )
+            }
+
+            if (!info.isLoading && info.isCloudOrHosting) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Tip: Preview emulator runs in Google Cloud. Install the APK on your phone to fetch via your local Wi-Fi or 4G/5G IP.",
+                    color = colors.slow,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                )
+            }
+        }
+    }
+}
+

@@ -1,5 +1,6 @@
 package com.aistudio.pokiesvault.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aistudio.pokiesvault.Screen
@@ -27,11 +30,15 @@ fun AppDrawer(
     currentScreen: Screen,
     activeThemeId: String,
     savedAccountsCount: Int,
+    userEmail: String?,
+    isLocalOnly: Boolean = false,
     onNavigate: (Screen) -> Unit,
     onThemeSelect: (String) -> Unit,
     onMyAccountsClick: () -> Unit,
     onAddDomainClick: () -> Unit,
     onClearDeviceClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onSignInClick: () -> Unit = {},
     onCloseDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -70,6 +77,49 @@ fun AppDrawer(
                 }
                 IconButton(onClick = onCloseDrawer) {
                     Icon(Icons.Default.Close, contentDescription = "Close menu", tint = colors.muted)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Cloud / Local Mode Status Card
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("drawer_cloud_status"),
+                shape = RoundedCornerShape(12.dp),
+                color = colors.panel2,
+                border = BorderStroke(
+                    1.dp,
+                    if (isLocalOnly) colors.violet.copy(alpha = 0.55f) else colors.cyan.copy(alpha = 0.45f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isLocalOnly) Icons.Default.Smartphone else Icons.Default.CloudDone,
+                        contentDescription = if (isLocalOnly) "Local-Only Device Mode" else "Cloud Vault Synced",
+                        tint = if (isLocalOnly) colors.violet else colors.cyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isLocalOnly) "Local-Only Mode Active" else "Cloud Vault Active",
+                            color = if (isLocalOnly) colors.violet else colors.cyan,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = if (isLocalOnly) "Device storage · Direct local IP" else (userEmail ?: "Google Account Connected"),
+                            color = colors.muted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 
@@ -171,7 +221,7 @@ fun AppDrawer(
                             .testTag("theme_btn_${theme.id}"),
                         shape = RoundedCornerShape(10.dp),
                         color = if (isSelected) colors.panel2 else colors.panel,
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.dp,
                             if (isSelected) colors.cyan else colors.border
                         )
@@ -198,11 +248,39 @@ fun AppDrawer(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // SECTION 4: CLEAR
+            // SECTION 4: ACCOUNT & DEVICE
+            Text("ACCOUNT", color = colors.cyan, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (isLocalOnly) {
+                DrawerItemRow(
+                    icon = Icons.Default.CloudSync,
+                    title = "Sign in with Google",
+                    subtitle = "Enable Cloud Vault backup & sync",
+                    titleColor = colors.cyan,
+                    onClick = {
+                        onCloseDrawer()
+                        onSignInClick()
+                    },
+                    modifier = Modifier.testTag("drawer_sign_in")
+                )
+            } else {
+                DrawerItemRow(
+                    icon = Icons.AutoMirrored.Filled.Logout,
+                    title = "Sign out",
+                    subtitle = "Disconnect Google account on this device",
+                    onClick = {
+                        onCloseDrawer()
+                        onSignOutClick()
+                    },
+                    modifier = Modifier.testTag("drawer_sign_out")
+                )
+            }
+
             DrawerItemRow(
                 icon = Icons.Default.DeleteOutline,
                 title = "Clear this device",
-                subtitle = "Removes local vault data",
+                subtitle = if (isLocalOnly) "Removes local vault data" else "Removes local & cloud vault data",
                 titleColor = colors.dead,
                 onClick = { showConfirmClear = true },
                 modifier = Modifier.testTag("drawer_clear_device")
@@ -214,7 +292,7 @@ fun AppDrawer(
     if (showConfirmClear) {
         AlertDialog(
             onDismissRequest = { showConfirmClear = false },
-            title = { Text("Clear this device?", color = colors.fg) },
+            title = { Text("Clear vault data?", color = colors.fg) },
             text = { Text("Clear saved sites, domain intel, visits, and the password stored on this device?", color = colors.muted) },
             confirmButton = {
                 Button(
@@ -259,7 +337,7 @@ private fun DrawerItemRow(
             .padding(vertical = 3.dp),
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) colors.cyan.copy(alpha = 0.12f) else colors.panel2,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             1.dp,
             if (isSelected) colors.cyan else colors.border
         ),

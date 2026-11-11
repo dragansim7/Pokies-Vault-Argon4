@@ -1,0 +1,135 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isBoundedStringList(listVal, maxCount) {
+      return listVal is list &&
+             listVal.size() <= maxCount &&
+             (listVal.size() == 0 || (listVal[0] is string && listVal[0].size() <= 256));
+    }
+
+    function isBoundedMapList(listVal, maxCount) {
+      return listVal is list &&
+             listVal.size() <= maxCount &&
+             (listVal.size() == 0 || listVal[0] is map);
+    }
+
+    function isValidUserVault(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             isBoundedStringList(data.visited, 500) &&
+             isBoundedStringList(data.mine, 500) &&
+             isBoundedStringList(data.customDomains, 500) &&
+             data.lastFetchTimestamp is int &&
+             data.lastFetchTimestamp >= 0 &&
+             isBoundedMapList(data.lastFetchRows, 500) &&
+             data.themeId is string &&
+             data.themeId.size() >= 1 &&
+             data.themeId.size() <= 32 &&
+             data.viewMode is string &&
+             data.viewMode in ['GROUPS', 'ONE', 'TWO'] &&
+             data.sortMode is string &&
+             data.sortMode in ['DEFAULT', 'AZ', 'ZA', 'NEW', 'BALANCE'] &&
+             data.bonusMode is string &&
+             data.bonusMode in ['NONE', 'NEW', 'SHARE', 'COMMISSION', 'REFERRAL', 'REBATE'] &&
+             data.notVisited is bool &&
+             data.wallets is bool &&
+             data.mineOnly is bool &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().keys().hasAll([
+                         'userId',
+                         'visited',
+                         'mine',
+                         'customDomains',
+                         'lastFetchTimestamp',
+                         'lastFetchRows',
+                         'themeId',
+                         'viewMode',
+                         'sortMode',
+                         'bonusMode',
+                         'notVisited',
+                         'wallets',
+                         'mineOnly',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId',
+                         'visited',
+                         'mine',
+                         'customDomains',
+                         'lastFetchTimestamp',
+                         'lastFetchRows',
+                         'themeId',
+                         'viewMode',
+                         'sortMode',
+                         'bonusMode',
+                         'notVisited',
+                         'wallets',
+                         'mineOnly',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       isValidUserVault(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserVault(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'visited',
+                         'mine',
+                         'customDomains',
+                         'lastFetchTimestamp',
+                         'lastFetchRows',
+                         'themeId',
+                         'viewMode',
+                         'sortMode',
+                         'bonusMode',
+                         'notVisited',
+                         'wallets',
+                         'mineOnly',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+  }
+}

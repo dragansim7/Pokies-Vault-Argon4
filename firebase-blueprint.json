@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "UserVault": {
+      "title": "UserVault",
+      "description": "Per-user synced Pokies Vault state including saved accounts, visited domains, custom added domains, UI preferences, and last balance/bonus fetch snapshot. Casino login credentials remain strictly on-device.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The authenticated Firebase user UID who owns this vault."
+        },
+        "visited": {
+          "type": "array",
+          "description": "Bounded list of domain names marked as visited by the user."
+        },
+        "mine": {
+          "type": "array",
+          "description": "Bounded list of domain names saved in My Accounts."
+        },
+        "customDomains": {
+          "type": "array",
+          "description": "Bounded list of custom domains added by the user formatted as domain|addedAt."
+        },
+        "lastFetchTimestamp": {
+          "type": "integer",
+          "description": "Epoch milliseconds of the last account fetcher run (0 if none)."
+        },
+        "lastFetchRows": {
+          "type": "array",
+          "description": "Bounded list of structured maps representing AccountResult rows from the last fetch."
+        },
+        "themeId": {
+          "type": "string",
+          "description": "Selected visual theme identifier (e.g. vault, matrix, gold, crimson, ocean)."
+        },
+        "viewMode": {
+          "type": "string",
+          "enum": ["GROUPS", "ONE", "TWO"],
+          "description": "Directory layout mode."
+        },
+        "sortMode": {
+          "type": "string",
+          "enum": ["DEFAULT", "AZ", "ZA", "NEW", "BALANCE"],
+          "description": "Directory sort order."
+        },
+        "bonusMode": {
+          "type": "string",
+          "enum": ["NONE", "NEW", "SHARE", "COMMISSION", "REFERRAL", "REBATE"],
+          "description": "Highlighted bonus category on directory cards."
+        },
+        "notVisited": {
+          "type": "boolean",
+          "description": "Filter toggle to show only unvisited sites."
+        },
+        "wallets": {
+          "type": "boolean",
+          "description": "Filter toggle to expand wallet rows on directory cards."
+        },
+        "mineOnly": {
+          "type": "boolean",
+          "description": "Filter toggle to show only saved accounts."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp submitted via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp submitted via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "visited",
+        "mine",
+        "customDomains",
+        "lastFetchTimestamp",
+        "lastFetchRows",
+        "themeId",
+        "viewMode",
+        "sortMode",
+        "bonusMode",
+        "notVisited",
+        "wallets",
+        "mineOnly",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserVault"
+      },
+      "description": "Stores each authenticated user's isolated Pokies Vault cloud state."
+    }
+  }
+}

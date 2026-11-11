@@ -1,7 +1,7 @@
 package com.aistudio.pokiesvault.ui.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.util.Log
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aistudio.pokiesvault.data.model.*
 import com.aistudio.pokiesvault.data.network.CasinoApiService
@@ -9,11 +9,15 @@ import com.aistudio.pokiesvault.data.repository.VaultRepository
 import com.aistudio.pokiesvault.data.repository.VaultState
 import com.aistudio.pokiesvault.util.DomainUtil
 import com.aistudio.pokiesvault.util.FormatUtil
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class VaultUiState(
     val vaultState: VaultState = VaultState(),
@@ -29,6 +33,8 @@ data class VaultUiState(
     val isSortFilterOpen: Boolean = false,
     val isConfirmScanOpen: Boolean = false,
     val showRejectedSites: Boolean = false,
+    val cloudSyncError: String? = null,
+    val egressIpInfo: EgressIpInfo = EgressIpInfo(),
 
     // Domain Intel State
     val intelChecks: Map<String, DomainCheck> = emptyMap(),
@@ -51,8 +57,11 @@ data class VaultUiState(
     val bonusStatusMessage: String = "Same domains as the main list. Load bonuses to fill the cards."
 )
 
-class VaultViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = VaultRepository(application)
+class VaultViewModel(
+    private val repository: VaultRepository,
+    private val currentUserId: String,
+    private val isLocalOnly: Boolean = false
+) : ViewModel() {
     private val apiService = CasinoApiService()
 
     private val _uiState = MutableStateFlow(VaultUiState())
@@ -62,25 +71,92 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     private var intelJob: Job? = null
     private var bonusJob: Job? = null
     private val statusCheckJobs = mutableMapOf<String, Job>()
+    private val statusProbeSemaphore = kotlinx.coroutines.sync.Semaphore(2)
 
     init {
         viewModelScope.launch {
             val initialChecks = repository.loadIntelChecks()
             val initialBonuses = repository.loadBonusCache()
-            _uiState.update { it.copy(intelChecks = initialChecks, bonusCache = initialBonuses) }
+            val cachedStatuses = initialChecks.mapValues { it.value.status }
+            _uiState.update {
+                it.copy(
+                    intelChecks = initialChecks,
+                    bonusCache = initialBonuses,
+                    siteStatuses = cachedStatuses
+                )
+            }
 
-            repository.state.collect { vState ->
-                _uiState.update { current ->
-                    current.copy(
-                        vaultState = vState,
-                        currentFetchRows = if (current.currentFetchRows.isEmpty() && vState.lastFetch != null) {
-                            vState.lastFetch.rows
-                        } else {
-                            current.currentFetchRows
-                        }
-                    )
+            // Load bulk status feed in a single call to avoid per-card status probe storms
+            launch {
+                val bulkStatuses = apiService.fetchAllLiveStatuses()
+                if (bulkStatuses.isNotEmpty()) {
+                    _uiState.update { current ->
+                        current.copy(siteStatuses = current.siteStatuses + bulkStatuses)
+                    }
                 }
             }
+
+            // Load active egress public IP & ISP info seen by target domains
+            launch {
+                val info = apiService.fetchEgressIpInfo()
+                _uiState.update { it.copy(egressIpInfo = info) }
+            }
+
+            launch {
+                repository.state.collect { vState ->
+                    _uiState.update { current ->
+                        current.copy(
+                            vaultState = vState,
+                            currentFetchRows = if (current.currentFetchRows.isEmpty() && vState.lastFetch != null) {
+                                vState.lastFetch.rows
+                            } else {
+                                current.currentFetchRows
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (!isLocalOnly && currentUserId != "local_device") {
+                // Merge local device data into cloud vault on sign-in, then start live listener
+                repository.mergeLocalWithCloudOnSignIn()
+
+                repository.observeUserVault(currentUserId)
+                    .catch { error ->
+                        val firestoreError = generateSequence(error) { it.cause }
+                            .filterIsInstance<FirebaseFirestoreException>()
+                            .firstOrNull()
+                        if (firestoreError == null && error is CancellationException) throw error
+                        val rootError = firestoreError ?: error
+                        Log.w("VaultViewModel", "Error observing user vault", rootError)
+                        _uiState.update {
+                            it.copy(cloudSyncError = rootError.message ?: "Cloud vault sync error")
+                        }
+                    }
+                    .collect { vState ->
+                        _uiState.update { current ->
+                            current.copy(
+                                vaultState = vState,
+                                cloudSyncError = null,
+                                currentFetchRows = if (current.currentFetchRows.isEmpty() && vState.lastFetch != null) {
+                                    vState.lastFetch.rows
+                                } else {
+                                    current.currentFetchRows
+                                }
+                            )
+                        }
+                    }
+            }
+        }
+    }
+
+    fun refreshEgressIp() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(egressIpInfo = it.egressIpInfo.copy(isLoading = true, error = null))
+            }
+            val info = apiService.fetchEgressIpInfo()
+            _uiState.update { it.copy(egressIpInfo = info) }
         }
     }
 
@@ -188,8 +264,10 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.update { it.copy(siteStatuses = it.siteStatuses + (domain to SiteStatus.CHECKING)) }
         val job = viewModelScope.launch {
-            val status = apiService.checkSiteStatus(domain)
-            _uiState.update { it.copy(siteStatuses = it.siteStatuses + (domain to status)) }
+            statusProbeSemaphore.withPermit {
+                val status = apiService.checkSiteStatus(domain)
+                _uiState.update { it.copy(siteStatuses = it.siteStatuses + (domain to status)) }
+            }
         }
         statusCheckJobs[domain] = job
     }
@@ -203,7 +281,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
                 creds.add(f.phone.trim() to f.password)
             }
         }
-        val validCreds = creds.filter { it.first.isNotBlank() && it.second.isNotBlank() }
+        val validCreds = creds.filter { it.first.isNotBlank() && it.second.isNotBlank() }.distinct()
         if (validCreds.isEmpty()) {
             _uiState.update { it.copy(fetchStatusMessage = "Enter your phone number and password before fetching.") }
             return
@@ -238,8 +316,10 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             val mutex = java.lang.Object()
 
             val queue = java.util.concurrent.ConcurrentLinkedQueue(uniqueDomains)
-            val workers = (1..3).map {
+            val workers = (1..3).map { workerIdx ->
                 launch {
+                    // Slight initial worker stagger so all 3 workers do not fire at t=0ms simultaneously
+                    delay((workerIdx - 1) * 140L)
                     while (isActive) {
                         val domain = queue.poll() ?: break
                         var result: AccountResult = AccountResult.Err(domain, "other", "No credentials")
@@ -253,6 +333,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
                                 break
                             } else if (res is AccountResult.Err) {
                                 result = res
+                                // Only retry fallback credentials when the site explicitly reports invalid_login
                                 if (res.code != "invalid_login") break
                             }
                         }
@@ -280,18 +361,23 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             for (r in finalRows) {
                 if (r is AccountResult.Ok) {
                     val prev = previousMap[r.domain]
-                    if (prev != null && Math.abs(prev.cash - r.cash) >= 0.01) {
+                    if (prev != null && kotlin.math.abs(prev.cash - r.cash) >= 0.01) {
                         diffNotes.add("${r.domain} balance ${FormatUtil.money(prev.cash)} → ${FormatUtil.money(r.cash)}")
                     }
                 }
             }
 
             val okCount = finalRows.count { it is AccountResult.Ok }
+            val storageLabel = if (isLocalOnly || currentUserId == "local_device") {
+                "Saved on this device."
+            } else {
+                "Synced to your cloud vault."
+            }
             _uiState.update {
                 it.copy(
                     isFetching = false,
                     fetchDiffs = diffNotes,
-                    fetchStatusMessage = "Done. $okCount of ${finalRows.size} signed in. Successful accounts are saved in your vault."
+                    fetchStatusMessage = "Done. $okCount of ${finalRows.size} signed in. $storageLabel"
                 )
             }
         }
@@ -299,10 +385,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopFetch() {
         fetchJob?.cancel()
+        val partialRows = _uiState.value.currentFetchRows
+        if (partialRows.isNotEmpty()) {
+            repository.saveFetch(partialRows)
+        }
         _uiState.update {
             it.copy(
                 isFetching = false,
-                fetchStatusMessage = "Stopped. Successful sign-ins stay in My accounts."
+                fetchStatusMessage = "Stopped. ${partialRows.count { r -> r is AccountResult.Ok }} successful sign-ins saved to your vault."
             )
         }
     }
@@ -313,7 +403,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update {
                 it.copy(
                     currentFetchRows = last.rows,
-                    fetchStatusMessage = "Showing the last fetch saved on this device."
+                    fetchStatusMessage = "Showing the last fetch saved in your vault."
                 )
             }
         }
@@ -391,7 +481,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 intelError = "",
-                intelNote = "Added $domain. It is on the main list and in the fetcher."
+                intelNote = "Added $domain. Synced to your cloud vault."
             )
         }
         return null
@@ -461,7 +551,6 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // If more than 40 domains, check live status batch first
             if (targets.size > 40) {
                 val liveBatch = apiService.fetchAllLiveStatuses()
                 if (liveBatch.isNotEmpty()) {

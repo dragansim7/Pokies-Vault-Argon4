@@ -152,3 +152,14 @@ data class DomainCheck(
     val ms: Long,
     val timestamp: Long
 )
+
+data class EgressIpInfo(
+    val ip: String = "",
+    val isp: String = "",
+    val countryCode: String = "",
+    val city: String = "",
+    val isCloudOrHosting: Boolean = false,
+    val isLoading: Boolean = true,
+    val error: String? = null
+)
+

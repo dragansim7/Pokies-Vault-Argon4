@@ -4,20 +4,77 @@ import com.aistudio.pokiesvault.data.model.*
 import com.aistudio.pokiesvault.util.DomainUtil
 import com.aistudio.pokiesvault.util.FormatUtil
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Cookie
+import okhttp3.CookieJar
 import okhttp3.FormBody
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
+import kotlin.random.Random
 
 class CasinoApiService {
+
+    private data class ResolvedMerchant(
+        val host: String,
+        val merchantId: String,
+        val supported: Boolean,
+        val resolvedAt: Long = System.currentTimeMillis()
+    )
+
+    // In-memory cookie store per host so Cloudflare (__cf_bm) and PHP session cookies
+    // persist across GET / -> POST /users/login -> POST /users/syncData
+    private val cookieStore = ConcurrentHashMap<String, MutableList<Cookie>>()
+
+    private val sessionCookieJar = object : CookieJar {
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            val hostKey = DomainUtil.normalizeDomain(url.host)
+            val list = cookieStore.getOrPut(hostKey) { mutableListOf() }
+            synchronized(list) {
+                for (cookie in cookies) {
+                    list.removeAll { it.name == cookie.name }
+                    list.add(cookie)
+                }
+            }
+        }
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            val hostKey = DomainUtil.normalizeDomain(url.host)
+            val list = cookieStore[hostKey] ?: return emptyList()
+            val now = System.currentTimeMillis()
+            synchronized(list) {
+                list.removeAll { it.expiresAt < now }
+                return list.toList()
+            }
+        }
+    }
+
+    // Cache resolved (host, merchantId) per domain so fallback credentials and bonus checks
+    // do not re-download the homepage HTML multiple times for the same site
+    private val merchantCache = ConcurrentHashMap<String, ResolvedMerchant>()
+
+    // Per-host pacing locks to prevent simultaneous worker bursts against the same backend host
+    private val hostMutexes = ConcurrentHashMap<String, Mutex>()
+    private val hostLastRequestTs = ConcurrentHashMap<String, Long>()
+
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(18, TimeUnit.SECONDS)
+        .cookieJar(sessionCookieJar)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(12, TimeUnit.SECONDS)
         .followRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val probeClient = OkHttpClient.Builder()
@@ -26,7 +83,291 @@ class CasinoApiService {
         .followRedirects(false)
         .build()
 
-    private val userAgent = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+    private val userAgent =
+        "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+    private val secChUa = "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""
+
+    private val merchantPattern = Pattern.compile("MERCHANTID\\s*=\\s*['\"]?(\\d+)['\"]?", Pattern.CASE_INSENSITIVE)
+
+    /**
+     * Applies realistic Mobile Chrome document navigation headers + Client Hints for initial GET / requests.
+     * Uses Android 10+ Privacy Sandbox Reduced User-Agent ("K") so no hardware model or device serial is leaked.
+     */
+    private fun Request.Builder.applyDocumentNavigationHeaders(): Request.Builder = this
+        .header("User-Agent", userAgent)
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+        .header("Accept-Language", "en-AU,en;q=0.9")
+        .header("Sec-CH-UA", secChUa)
+        .header("Sec-CH-UA-Mobile", "?1")
+        .header("Sec-CH-UA-Platform", "\"Android\"")
+        .header("Sec-Fetch-Dest", "document")
+        .header("Sec-Fetch-Mode", "navigate")
+        .header("Sec-Fetch-Site", "none")
+        .header("Sec-Fetch-User", "?1")
+        .header("Upgrade-Insecure-Requests", "1")
+
+    /**
+     * Applies realistic Mobile Chrome same-origin XHR/Fetch headers + Client Hints for POST /api/v1/index.php requests.
+     */
+    private fun Request.Builder.applySameOriginAjaxHeaders(host: String): Request.Builder = this
+        .header("User-Agent", userAgent)
+        .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "en-AU,en;q=0.9")
+        .header("Origin", "https://$host")
+        .header("Referer", "https://$host/")
+        .header("X-Requested-With", "XMLHttpRequest")
+        .header("Sec-CH-UA", secChUa)
+        .header("Sec-CH-UA-Mobile", "?1")
+        .header("Sec-CH-UA-Platform", "\"Android\"")
+        .header("Sec-Fetch-Dest", "empty")
+        .header("Sec-Fetch-Mode", "cors")
+        .header("Sec-Fetch-Site", "same-origin")
+
+    /**
+     * Queries the device's active public egress IP, ISP/carrier, and country directly from the Android client.
+     * Because all fetches run directly on-device via OkHttpClient, this is the exact IP seen by target domains.
+     */
+    suspend fun fetchEgressIpInfo(): EgressIpInfo = withContext(Dispatchers.IO) {
+        // Primary: ipwho.is (returns IP, ISP/ASN org, country_code, city, and hosting flag)
+        try {
+            val req = Request.Builder()
+                .url("https://ipwho.is/")
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            probeClient.newCall(req).execute().use { res ->
+                val body = res.body?.string()
+                if (res.isSuccessful && !body.isNullOrBlank()) {
+                    val json = JSONObject(body)
+                    if (json.optBoolean("success", true)) {
+                        val ip = json.optString("ip", "").trim()
+                        if (ip.isNotEmpty()) {
+                            val country = json.optString("country_code", "").trim()
+                            val city = json.optString("city", "").trim()
+                            val conn = json.optJSONObject("connection")
+                            val ispRaw = conn?.optString("isp", "")?.ifBlank { conn.optString("org", "") }.orEmpty().trim()
+                            val orgRaw = conn?.optString("org", "").orEmpty().trim()
+                            val ispLabel = ispRaw.ifBlank { orgRaw }.ifBlank { "Direct Network" }
+                            val security = json.optJSONObject("security")
+                            val hostingFlag = security?.optBoolean("hosting", false) == true
+                            val isCloud = hostingFlag || isCloudProviderName("$ispLabel $orgRaw")
+                            return@withContext EgressIpInfo(
+                                ip = ip,
+                                isp = ispLabel,
+                                countryCode = country,
+                                city = city,
+                                isCloudOrHosting = isCloud,
+                                isLoading = false,
+                                error = null
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Fallback 1: ipinfo.io/json
+        try {
+            val req = Request.Builder()
+                .url("https://ipinfo.io/json")
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            probeClient.newCall(req).execute().use { res ->
+                val body = res.body?.string()
+                if (res.isSuccessful && !body.isNullOrBlank()) {
+                    val json = JSONObject(body)
+                    val ip = json.optString("ip", "").trim()
+                    if (ip.isNotEmpty()) {
+                        val orgRaw = json.optString("org", "").replace(Regex("^AS\\d+\\s*"), "").trim()
+                        val country = json.optString("country", "").trim()
+                        val city = json.optString("city", "").trim()
+                        val ispLabel = orgRaw.ifBlank { "Direct Network" }
+                        return@withContext EgressIpInfo(
+                            ip = ip,
+                            isp = ispLabel,
+                            countryCode = country,
+                            city = city,
+                            isCloudOrHosting = isCloudProviderName(ispLabel),
+                            isLoading = false,
+                            error = null
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Fallback 2: api.ipify.org
+        try {
+            val req = Request.Builder()
+                .url("https://api.ipify.org?format=json")
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            probeClient.newCall(req).execute().use { res ->
+                val body = res.body?.string()
+                if (res.isSuccessful && !body.isNullOrBlank()) {
+                    val json = JSONObject(body)
+                    val ip = json.optString("ip", "").trim()
+                    if (ip.isNotEmpty()) {
+                        return@withContext EgressIpInfo(
+                            ip = ip,
+                            isp = "Direct Egress",
+                            countryCode = "",
+                            city = "",
+                            isCloudOrHosting = false,
+                            isLoading = false,
+                            error = null
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        EgressIpInfo(
+            ip = "Unavailable",
+            isp = "Check network connection",
+            isLoading = false,
+            error = "Could not resolve public IP"
+        )
+    }
+
+    private fun isCloudProviderName(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.contains("google") ||
+                lower.contains("gcp") ||
+                lower.contains("amazon") ||
+                lower.contains("aws") ||
+                lower.contains("microsoft") ||
+                lower.contains("azure") ||
+                lower.contains("digitalocean") ||
+                lower.contains("linode") ||
+                lower.contains("vultr") ||
+                lower.contains("hetzner") ||
+                lower.contains("ovh") ||
+                lower.contains("choopa") ||
+                lower.contains("datacenter") ||
+                lower.contains("hosting")
+    }
+
+    /**
+     * Paces requests targeting the same host so concurrent workers or rapid login->syncData
+     * sequences have a slight human-like stagger (140-260ms) to avoid WAF/rate-limit triggers.
+     */
+    private suspend fun paceHost(host: String, minGapMs: Long = 160L) {
+        val key = DomainUtil.normalizeDomain(host)
+        val mutex = hostMutexes.getOrPut(key) { Mutex() }
+        mutex.withLock {
+            val now = System.currentTimeMillis()
+            val last = hostLastRequestTs[key] ?: 0L
+            val elapsed = now - last
+            if (elapsed < minGapMs) {
+                val jitter = Random.nextLong(25L, 95L)
+                delay((minGapMs - elapsed) + jitter)
+            }
+            hostLastRequestTs[key] = System.currentTimeMillis()
+        }
+    }
+
+    /**
+     * Executes an OkHttp request with automatic exponential backoff + Retry-After support
+     * for HTTP 429 (Rate Limit), 502, 503, 504, and transient network/socket timeouts.
+     */
+    private suspend fun <T> executeWithRetry(
+        hostForPacing: String,
+        maxAttempts: Int = 3,
+        requestFactory: () -> Request,
+        block: (Response) -> T
+    ): T {
+        var lastException: Exception? = null
+        for (attempt in 1..maxAttempts) {
+            paceHost(hostForPacing)
+            try {
+                val req = requestFactory()
+                client.newCall(req).execute().use { response ->
+                    val code = response.code
+                    if (code == 429 || code == 502 || code == 503 || code == 504) {
+                        if (attempt < maxAttempts) {
+                            val retryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
+                            val backoffMs = when {
+                                retryAfterSec != null && retryAfterSec in 1..15 -> retryAfterSec * 1000L
+                                code == 429 -> 1200L * attempt + Random.nextLong(150L, 450L)
+                                else -> 650L * attempt + Random.nextLong(100L, 300L)
+                            }
+                            delay(backoffMs)
+                            return@use
+                        } else if (code == 429) {
+                            throw IOException("rate-limited")
+                        }
+                    }
+                    return block(response)
+                }
+            } catch (e: SocketTimeoutException) {
+                lastException = e
+                if (attempt < maxAttempts) {
+                    delay(500L * attempt + Random.nextLong(100L, 250L))
+                }
+            } catch (e: IOException) {
+                lastException = e
+                if (e.message == "rate-limited") throw e
+                if (attempt < maxAttempts) {
+                    delay(450L * attempt + Random.nextLong(100L, 250L))
+                }
+            }
+        }
+        throw lastException ?: IOException("timeout")
+    }
+
+    /**
+     * Resolves and caches the canonical host and MERCHANTID for a domain (TTL: 30 minutes).
+     * Eliminates redundant homepage scrapes when testing fallback credentials on the same domain.
+     */
+    private suspend fun resolveMerchantEndpoint(domain: String): ResolvedMerchant {
+        val now = System.currentTimeMillis()
+        val cached = merchantCache[domain]
+        if (cached != null && (now - cached.resolvedAt) < 30 * 60 * 1000L) {
+            return cached
+        }
+
+        val resolved = executeWithRetry(
+            hostForPacing = domain,
+            maxAttempts = 2,
+            requestFactory = {
+                Request.Builder()
+                    .url("https://$domain/")
+                    .applyDocumentNavigationHeaders()
+                    .get()
+                    .build()
+            }
+        ) { response ->
+            val finalUrl = response.request.url
+            var host = DomainUtil.normalizeDomain(finalUrl.host)
+            if (!DomainUtil.isPublicDomain(host)) host = domain
+
+            val html = response.body?.string() ?: ""
+            var merchantId = ""
+            val matcher = merchantPattern.matcher(html)
+            if (matcher.find()) {
+                merchantId = matcher.group(1) ?: ""
+            }
+            val supported = merchantId.isNotEmpty() ||
+                    html.contains("api/v1/index.php") ||
+                    html.contains("wallet/app.js")
+            ResolvedMerchant(
+                host = host,
+                merchantId = merchantId,
+                supported = supported
+            )
+        }
+
+        merchantCache[domain] = resolved
+        return resolved
+    }
 
     suspend fun checkSiteStatus(rawDomain: String): SiteStatus = withContext(Dispatchers.IO) {
         checkSiteStatusDetailed(rawDomain).first
@@ -38,10 +379,10 @@ class CasinoApiService {
 
         val started = System.currentTimeMillis()
         try {
+            paceHost(domain, minGapMs = 80L)
             val request = Request.Builder()
                 .url("https://$domain/")
-                .header("User-Agent", userAgent)
-                .header("Accept", "text/html")
+                .applyDocumentNavigationHeaders()
                 .get()
                 .build()
 
@@ -50,7 +391,7 @@ class CasinoApiService {
                 val code = response.code
                 val status = when {
                     code in 300..399 -> SiteStatus.REDIRECT
-                    code in 200..399 -> if (elapsed > 2800) SiteStatus.SLOW else SiteStatus.LIVE
+                    code in 200..399 || code == 403 || code == 429 -> if (elapsed > 2800) SiteStatus.SLOW else SiteStatus.LIVE
                     else -> SiteStatus.DEAD
                 }
                 Pair(status, elapsed)
@@ -104,54 +445,34 @@ class CasinoApiService {
         if (!DomainUtil.isPublicDomain(domain)) return@withContext emptyList()
 
         try {
-            val homeRequest = Request.Builder()
-                .url("https://$domain/")
-                .header("User-Agent", userAgent)
-                .header("Accept", "text/html")
-                .get()
-                .build()
+            val endpoint = resolveMerchantEndpoint(domain)
+            if (endpoint.merchantId.isEmpty()) return@withContext emptyList()
 
-            var merchantId = ""
-            var host = domain
-
-            client.newCall(homeRequest).execute().use { response ->
-                val finalUrl = response.request.url
-                host = DomainUtil.normalizeDomain(finalUrl.host)
-                if (!DomainUtil.isPublicDomain(host)) host = domain
-
-                val html = response.body?.string() ?: ""
-                val matcher = Pattern.compile("MERCHANTID\\s*=\\s*(\\d+)").matcher(html)
-                if (matcher.find()) {
-                    merchantId = matcher.group(1) ?: ""
-                }
-            }
-
-            if (merchantId.isEmpty()) return@withContext emptyList()
-
+            val host = endpoint.host
             val body = FormBody.Builder()
                 .add("module", "/merchants/getPublicInfo")
-                .add("merchantId", merchantId)
+                .add("merchantId", endpoint.merchantId)
                 .add("accessId", "")
                 .add("accessToken", "")
                 .add("walletIsAdmin", "")
                 .build()
 
-            val req = Request.Builder()
-                .url("https://$host/api/v1/index.php")
-                .header("User-Agent", userAgent)
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .header("Accept", "application/json,text/plain,*/*")
-                .header("Origin", "https://$host")
-                .header("Referer", "https://$host/")
-                .post(body)
-                .build()
-
-            client.newCall(req).execute().use { res ->
-                val jsonStr = res.body?.string() ?: return@withContext emptyList()
+            executeWithRetry(
+                hostForPacing = host,
+                maxAttempts = 2,
+                requestFactory = {
+                    Request.Builder()
+                        .url("https://$host/api/v1/index.php")
+                        .applySameOriginAjaxHeaders(host)
+                        .post(body)
+                        .build()
+                }
+            ) { res ->
+                val jsonStr = res.body?.string() ?: return@executeWithRetry emptyList()
                 val json = JSONObject(jsonStr)
-                if (json.optString("status") != "SUCCESS") return@withContext emptyList()
-                val dataObj = json.optJSONObject("data") ?: return@withContext emptyList()
-                val promoArr = dataObj.optJSONArray("promotions") ?: return@withContext emptyList()
+                if (json.optString("status") != "SUCCESS") return@executeWithRetry emptyList()
+                val dataObj = json.optJSONObject("data") ?: return@executeWithRetry emptyList()
+                val promoArr = dataObj.optJSONArray("promotions") ?: return@executeWithRetry emptyList()
                 parsePublicPromotions(promoArr)
             }
         } catch (_: Exception) {
@@ -241,7 +562,7 @@ class CasinoApiService {
         if (!DomainUtil.isPublicDomain(domain)) {
             return@withContext AccountResult.Err(domain, "other", "Enter a real site domain")
         }
-        val phone = phoneRaw.replace("\\s+".toRegex(), "")
+        val phone = phoneRaw.replace("[\\s\\-()]".toRegex(), "")
         if (!Regex("^[0-9+]{6,20}$").matches(phone)) {
             return@withContext AccountResult.Err(domain, "other", "Enter the mobile number you use on these sites")
         }
@@ -250,32 +571,16 @@ class CasinoApiService {
         }
 
         try {
-            val homeRequest = Request.Builder()
-                .url("https://$domain/")
-                .header("User-Agent", userAgent)
-                .header("Accept", "text/html")
-                .get()
-                .build()
-
-            var merchantId = ""
-            var host = domain
-
-            client.newCall(homeRequest).execute().use { response ->
-                val finalUrl = response.request.url
-                host = DomainUtil.normalizeDomain(finalUrl.host)
-                if (!DomainUtil.isPublicDomain(host)) host = domain
-
-                val html = response.body?.string() ?: ""
-                val matcher = Pattern.compile("MERCHANTID\\s*=\\s*(\\d+)").matcher(html)
-                if (matcher.find()) {
-                    merchantId = matcher.group(1) ?: ""
-                }
-                if (merchantId.isEmpty() && !html.contains("api/v1/index.php") && !html.contains("wallet/app.js")) {
-                    return@withContext AccountResult.Err(domain, "unsupported", "Different login system")
-                }
+            // Step 0: Resolve (or reuse cached) merchantId & canonical host
+            val endpoint = resolveMerchantEndpoint(domain)
+            if (!endpoint.supported) {
+                return@withContext AccountResult.Err(domain, "unsupported", "Different login system")
             }
 
-            // Step 1: Login
+            val host = endpoint.host
+            val merchantId = endpoint.merchantId
+
+            // Step 1: Login with retry & rate-limit backoff
             val loginBody = FormBody.Builder()
                 .add("module", "/users/login")
                 .add("merchantId", merchantId)
@@ -286,18 +591,19 @@ class CasinoApiService {
                 .add("password", passwordRaw)
                 .build()
 
-            val loginRequest = Request.Builder()
-                .url("https://$host/api/v1/index.php")
-                .header("User-Agent", userAgent)
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .header("Accept", "application/json,text/plain,*/*")
-                .header("Origin", "https://$host")
-                .header("Referer", "https://$host/")
-                .post(loginBody)
-                .build()
-
-            val loginJson = client.newCall(loginRequest).execute().use { res ->
-                val str = res.body?.string() ?: throw Exception("empty-login")
+            val loginJson = executeWithRetry(
+                hostForPacing = host,
+                maxAttempts = 3,
+                requestFactory = {
+                    Request.Builder()
+                        .url("https://$host/api/v1/index.php")
+                        .applySameOriginAjaxHeaders(host)
+                        .post(loginBody)
+                        .build()
+                }
+            ) { res ->
+                val str = res.body?.string()?.trim() ?: throw IOException("empty-login")
+                if (!str.startsWith("{")) throw IOException("bad-json")
                 JSONObject(str)
             }
 
@@ -308,14 +614,14 @@ class CasinoApiService {
                 return@withContext classifyFailure(domain, msg)
             }
 
-            val dataObj = loginJson.optJSONObject("data") ?: throw Exception("no-data")
+            val dataObj = loginJson.optJSONObject("data") ?: throw IOException("no-data")
             val accessId = dataObj.optString("id", "")
             val accessToken = dataObj.optString("token", "")
             if (accessId.isEmpty() || accessToken.isEmpty()) {
                 return@withContext AccountResult.Err(domain, "other", "Sign-in did not return a session")
             }
 
-            // Step 2: syncData
+            // Step 2: syncData with retry & rate-limit backoff
             val syncBody = FormBody.Builder()
                 .add("module", "/users/syncData")
                 .add("merchantId", merchantId)
@@ -325,18 +631,19 @@ class CasinoApiService {
                 .add("background", "1")
                 .build()
 
-            val syncRequest = Request.Builder()
-                .url("https://$host/api/v1/index.php")
-                .header("User-Agent", userAgent)
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .header("Accept", "application/json,text/plain,*/*")
-                .header("Origin", "https://$host")
-                .header("Referer", "https://$host/")
-                .post(syncBody)
-                .build()
-
-            val syncJson = client.newCall(syncRequest).execute().use { res ->
-                val str = res.body?.string() ?: throw Exception("empty-sync")
+            val syncJson = executeWithRetry(
+                hostForPacing = host,
+                maxAttempts = 3,
+                requestFactory = {
+                    Request.Builder()
+                        .url("https://$host/api/v1/index.php")
+                        .applySameOriginAjaxHeaders(host)
+                        .post(syncBody)
+                        .build()
+                }
+            ) { res ->
+                val str = res.body?.string()?.trim() ?: throw IOException("empty-sync")
+                if (!str.startsWith("{")) throw IOException("bad-json")
                 JSONObject(str)
             }
 
@@ -356,10 +663,20 @@ class CasinoApiService {
     private fun classifyFailure(domain: String, message: String): AccountResult {
         val lower = message.lowercase()
         return when {
-            lower.contains("invalid login") || lower.contains("invalid password") -> AccountResult.Err(domain, "invalid_login", "Not your account")
-            lower.contains("captcha") -> AccountResult.Err(domain, "captcha", "Site asked for a captcha")
-            lower.contains("bad-json") || lower.contains("empty-") -> AccountResult.Err(domain, "unreachable", "Site did not return account data")
-            lower.contains("timeout") || lower.contains("abort") -> AccountResult.Err(domain, "timeout", "Timed out")
+            lower.contains("invalid login") ||
+                    lower.contains("invalid password") ||
+                    lower.contains("wrong password") ||
+                    lower.contains("user not found") ||
+                    lower.contains("account not found") ||
+                    lower.contains("mobile not found") -> AccountResult.Err(domain, "invalid_login", "Not your account")
+            lower.contains("rate-limited") || lower.contains("too many requests") || lower.contains("429") ->
+                AccountResult.Err(domain, "rate_limited", "Rate limited by site")
+            lower.contains("captcha") || lower.contains("cloudflare") ->
+                AccountResult.Err(domain, "captcha", "Site asked for a captcha")
+            lower.contains("bad-json") || lower.contains("empty-") ->
+                AccountResult.Err(domain, "unreachable", "Site did not return account data")
+            lower.contains("timeout") || lower.contains("abort") || lower.contains("timed out") ->
+                AccountResult.Err(domain, "timeout", "Timed out")
             else -> AccountResult.Err(domain, "other", message.ifBlank { "Could not sign in" })
         }
     }
