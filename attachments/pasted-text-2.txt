@@ -1,0 +1,41 @@
+Fix the status pipeline. It is the reason the whole Latest group never finishes
+checking.
+
+There is a public endpoint that returns status for the entire set in ONE
+unauthenticated call:
+https://intel.bestpokieslist.online/public/statuses
+
+Do this:
+
+1. First, just curl it and report back the exact top-level shape — the key names
+   if it's an object, or the field names of an array item if it's an array. If
+   it 404s, try it with and without a trailing slash and report what you find.
+   Don't guess the shape.
+
+2. In src/lib/casino.impl.server.ts add fetchAllStatuses(). One GET, header
+   accept: application/json, 12 second timeout. Parse it tolerantly to match
+   whatever shape you actually found. Normalise live/up/ok -> "live",
+   slow -> "slow", redirect -> "redirect", anything else -> "dead".
+
+3. Export a createServerFn called fetchAllStatusesFn from
+   src/lib/casino.functions.ts, following the exact pattern of the existing
+   server functions there.
+
+4. In src/components/directory.tsx: delete the status queue, the `running` ref
+   and the IntersectionObserver block that drives per-card status checks.
+   Replace all of it with ONE call on mount that populates the whole `statuses`
+   map at once.
+
+5. Cache the result in localStorage with a 15 minute TTL. It currently uses
+   sessionStorage with a 10 minute TTL — move it.
+
+6. Keep checkSiteStatus in place, but demote it: after the bulk call, probe
+   individually ONLY the domains the feed did not return.
+
+Don't touch the fetcher, the groups, or the sort/filter logic.
+
+Verify: build and typecheck pass, and the preview shows resolved statuses
+(Live / Slow / Down) across the whole list rather than "Checking".
+
+Report back: the raw shape of the endpoint response, and whether the bulk call
+covered the full catalog or only part of it.

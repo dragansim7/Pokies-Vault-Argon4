@@ -1,0 +1,32 @@
+Two corrections from your last report. Both are small.
+
+1. NEW WENT FROM 13 TO 8, but the source labels five of those seven domains as
+   New. We overrode the source.
+
+   Rule: if the source gives a domain a group, it belongs in THAT group.
+   Unverified is only for domains the source does not contain at all — that is
+   what the group actually means here.
+
+   So: restore those five to New (New should be 13 again) and leave only the two
+   source-absent domains under Unverified (Unverified should be 2).
+
+   If Unverified with 2 entries looks silly, keep it — it is a real signal that
+   those two are not in the live source. Don't delete the group.
+
+   Make this survive a re-run: the sync script should apply the same rule, so
+   running npm run sync:catalog again produces no diff and does not re-break it.
+
+2. THE SOURCE HAS A `url` FIELD PER ITEM and we ignore it — the app builds links
+   as https://<domain>/ instead. Check whether any `url` in the payload differs
+   from that pattern. Report how many differ and show a few examples. If they
+   differ meaningfully, use the source url for the card links and the favicon
+   host; if they are all identical to the pattern, leave it alone and say so.
+
+Don't touch anything else — not the fetcher, the status pipeline, the icons, or
+the layout.
+
+Verify: build and typecheck pass, New shows 13, Unverified shows 2, and a second
+sync run produces no diff.
+
+Report back: the counts after the fix, and how many url values differed from
+https://<domain>/.

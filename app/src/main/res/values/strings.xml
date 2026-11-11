@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pokies Vault</string>
+    <string name="tagline">Smart Casino Account &amp; Bonus Vault</string>
+    <string name="fetcher_title">Bonus Fetcher</string>
+    <string name="my_accounts_title">My Accounts</string>
+    <string name="gamble_responsibly">18+ Gamble responsibly. Only use money you can afford to lose.</string>
+</resources>

@@ -1,0 +1,27 @@
+Fix vercel.json — it declares no region and no maxDuration, and both are now
+load-bearing.
+
+1. First look at .vercel/output/functions/ and report the actual path of the
+   built server function, so the glob we use in the config matches something
+   real rather than being a guess.
+
+2. Then set vercel.json to:
+
+  {
+    "installCommand": "npm install --omit=dev --no-audit --no-fund",
+    "regions": ["syd1"],
+    "functions": { "**/*": { "maxDuration": 60 } }
+  }
+
+   Use the glob that matches the function path you actually found in step 1.
+   Keep installCommand exactly as it is. Add nothing else.
+
+Why: the casino sites are Australian but the functions run in the US, so every
+login handshake round-trips across the Pacific. And our inner
+AbortSignal.timeout(18_000) is longer than the platform default ceiling, so
+larger batches can get killed before they finish.
+
+Don't change any application code in this step.
+
+Verify: build passes, and confirm the config validates. Note that the first
+deploy after a region change will run cold.

@@ -1,0 +1,42 @@
+Take favicon resolution off the per-card server call. Two parts.
+
+PART 1 — direct, zero server calls.
+Rewrite src/components/site-icon.tsx to point an <img> straight at
+https://<domain>/favicon.ico, with referrerPolicy="no-referrer" and
+onError -> /site-fallback.jpg. Delete the module-level queue, the inflight map,
+the sessionStorage cache and the IntersectionObserver.
+
+PART 2 — batched resolver for the misses.
+Most of these sites don't serve /favicon.ico; their real icon is a
+<link rel="icon"> pointing at a CDN. So the direct attempt will fail for most
+and we would regress to fallbacks everywhere. Fix that with one batched call.
+
+Add to src/lib/casino.impl.server.ts:
+
+  resolveSiteIconsBatch({ domains }): Promise<Record<string, string>>
+
+For each domain: fetch https://<domain>/ with an 8s timeout and the same UA,
+follow redirects, read at most 200KB of HTML, find the first
+<link rel="icon">, shortcut icon, or apple-touch-icon href, resolve it against
+the final response URL, and return a domain -> absolute-url map. Skip entries
+where the href is missing or not http(s). Run 6 domains concurrently inside.
+Export a matching createServerFn.
+
+In SiteIcon, on image error:
+- read localStorage key "vault-icon:<domain>", 7 day TTL. If present, use it.
+- if absent, dedupe-push the domain onto a module-level pending array
+- a single flusher drains that array in chunks of 40, one chunk in flight at a
+  time, calling the batch fn, then writing each result into the cache
+- the component re-reads the cache when a flush completes
+
+Keep resolveSiteIcon (singular) exported so nothing else breaks, but stop
+calling it per card.
+
+Don't touch layout, sizing, or the site-card CSS.
+
+Verify: build and typecheck pass. On the preview, most cards show real icons
+within a few seconds and the rest show the fallback. Console clean. Network
+shows a small number of batch calls, not one per card.
+
+Report back: how many batch calls a cold load of 1,142 domains makes, and how
+many domains the resolver actually found an icon for.

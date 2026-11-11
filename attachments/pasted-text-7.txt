@@ -1,0 +1,42 @@
+Sync the catalog from the live source instead of hand-maintaining it, and stop
+flattening "unknown".
+
+TWO SOURCES:
+1. https://bestpokieslist.online/api/homepage-domains.php?build=v6 — real group
+   assignment and real addedAt per domain.
+2. https://intel.bestpokieslist.online/public/statuses — we already use this for
+   status. It is a SUPERSET: count 2483 domains, each item has domain, status,
+   responseMs, finalDomain, reason, checkedAt.
+
+STEP 1 — write scripts/sync-catalog.mjs that:
+- fetches both sources
+- builds a union: groups and addedAt from source 1; any domain that exists ONLY
+  in source 2 goes into the "latest" group with addedAt null
+- preserves the exact existing TypeScript shape of src/data/sites.ts so nothing
+  else has to change
+- writes the file
+- logs: total domains, per-group counts, and how many came only from source 2
+- falls back to the current file contents if either fetch fails
+- is idempotent: a second run against unchanged data should produce no diff
+
+Add an npm script "sync:catalog" for it.
+
+STEP 2 — give "unknown" its own state.
+Right now fetchAllStatuses flattens unknown to dead. They are not the same:
+unknown means DNS resolved but the host did not answer on TCP; dead means DNS is
+broken. Add "unknown" as its own StatusKind, give it a distinct neutral label
+and colour in STATUS_LABEL in directory.tsx, and stop flattening it.
+
+STEP 3 — cap the per-domain fallback.
+After the sync the catalog may be far larger than 1,142, and every domain the
+bulk feed misses is currently probed one call at a time. Cap it: probe
+individually only the first 40 missing domains, and leave any beyond that on the
+neutral "Unknown" state rather than firing hundreds of calls.
+
+Don't change the fetcher, the icon component, the sort logic, or the layout.
+
+Verify: build and typecheck pass, the preview renders, group headings show
+sensible counts, and the sync script produces no diff on a second run.
+
+Report back: total domains after sync, per-group counts, how many came only from
+the status feed, and what the cold-load serverless call count is now.

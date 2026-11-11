@@ -1,0 +1,35 @@
+Final verification pass. Don't change any behaviour unless something fails.
+
+1. npm run build and npm run typecheck must both pass.
+
+2. npm run preview:restart and re-check the BUILT output, not just the dev
+   server. Watch for "Failed to load module script ... MIME type text/html".
+
+3. On the preview, confirm each of these works and report the actual result for
+   each — don't just say "works":
+   - statuses resolve across the whole list, including the bottom of Latest,
+     with no card left on "Checking"
+   - icons render on essentially every card, 0 fallbacks after settling
+   - the search box filters
+   - sort and filter opens and every sort option applies
+   - view toggle cycles Groups / One / Two
+   - bookmarking a site updates My accounts
+   - a single-domain check works
+   - a scan runs, checkpoints, survives a reload via Resume, and Stop keeps
+     whatever was found
+   - the diff panel appears when balances change
+   - Needs-attention renders and its checkboxes persist
+
+4. Open the console at 390x844 and at desktop width. No uncaught errors either
+   place.
+
+5. Confirm the cold-load serverless call count is still 2 and that a reload
+   after settling makes no icon calls.
+
+6. Confirm scope held: no auth, no database, no migrations, no credits, no
+   community anywhere in the code.
+
+7. Run npm run sync:catalog once more and confirm it still produces no diff.
+
+Report: a pass/fail line for each numbered item, the cold-load call count, and
+anything you found that we didn't already know about.

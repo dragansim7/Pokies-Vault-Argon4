@@ -1,0 +1,27 @@
+Two things from the sync.
+
+1. UNVERIFIED WENT TO ZERO. It had 7 domains before the sync:
+   me96.com, truemateaus.com, goalspin.vip, babymolly88.com, veeclub.net,
+   chuckmeth9.net, ox38.net — and the live site still shows an Unverified group.
+   So the group mapping dropped a key.
+
+   First, log the raw top-level keys of the homepage-domains.php response and
+   report them verbatim. Don't guess. Then fix the mapping so EVERY group the
+   source actually provides is mapped. Don't invent groups that aren't there.
+
+   If the source genuinely has no unverified group, say so plainly and instead
+   keep those 7 domains from the previous version of the file under Unverified.
+
+   While you're in there, confirm New (13), Best (47) and Instant share bonuses
+   (16) are complete and that nothing else was silently dropped by the mapping.
+
+2. LATEST IS NOW 2,407 CARDS rendering at once. Measure it on a mobile viewport.
+   If it drags, add a "Show more" that renders 300 at a time for the Latest
+   group only. Leave the small groups unpaginated, and don't change groups,
+   counts, search or sort behaviour.
+
+Verify: build and typecheck pass, Unverified shows its domains again, and the
+page stays responsive while scrolling to the bottom of Latest.
+
+Report back: the raw group keys you found, what the mapping was missing, and
+whether Latest needed the paging.

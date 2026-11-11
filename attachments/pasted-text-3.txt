@@ -1,0 +1,53 @@
+Fix the account fetcher in src/components/fetcher.tsx. Two problems: it fires
+one serverless call per domain per credential, and it holds every result in
+React state until the run finishes — so closing the tab loses the whole scan.
+
+Server side — add to src/lib/casino.impl.server.ts:
+
+  export async function fetchCasinoBatch(input: {
+    domains: string[]; phone: string; password: string;
+  }): Promise<AccountRow[]> {
+    const { domains, phone, password } = input;
+    const out: AccountRow[] = new Array(domains.length);
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(6, domains.length) }, async () => {
+        for (;;) {
+          const i = cursor++;
+          if (i >= domains.length) return;
+          out[i] = await fetchCasinoAccount({ domain: domains[i], phone, password });
+        }
+      }),
+    );
+    return out;
+  }
+
+Export a matching createServerFn called fetchCasinoBatchFn.
+
+Client side, rewrite the run() driver in fetcher.tsx:
+
+- Chunk the domain list into batches of 10. Run 4 batches concurrently.
+- Preserve the existing fallback-credential semantics exactly: try credential 1
+  on the batch, collect only the rows that come back "invalid_login", retry ONLY
+  those domains with credential 2, then 3, then 4. Any other error code stops
+  for that domain. Domains still unresolved at the end get an invalid_login row.
+- Call rememberAccount(domain) for every ok row, exactly as today.
+- Checkpoint to localStorage after EVERY batch, under key "vault-run", storing
+  { at, done: string[], rows }. On mount, if a checkpoint exists with fewer done
+  domains than the catalog, render a "Resume scan (n of 1142)" button that
+  continues from where it stopped.
+- Leave the single-domain "Check" box and the "Fetch my accounts" button
+  working exactly as they do now.
+
+Also fix a bug in the same file: `if (!stopped && finalRows.length)
+saveFetch(finalRows)` means pressing Stop saves nothing, but the status message
+claims the results are kept. Call saveFetch unconditionally.
+
+Don't change the result cards, the diff panel, the Needs-attention section, or
+the credential form.
+
+Verify: build and typecheck pass. On the preview, start a scan, reload the page
+mid-scan, and confirm the resume button appears with the correct count and
+continues rather than restarting.
+
+Report back: how many serverless calls a full 1,142 scan used before and after.

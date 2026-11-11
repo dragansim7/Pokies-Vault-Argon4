@@ -1,0 +1,48 @@
+Replace the whole favicon approach. bestpokieslist runs its own icon service
+that we should just use directly:
+
+  https://intel.bestpokieslist.online/favicon/<domain>
+
+Verified: it returns an image for real domains including ones our resolver
+failed on (9au.com, 100pokies.com), and it returns an SVG rather than a 404 for
+unknown domains, so it effectively never fails.
+
+Rewrite src/components/site-icon.tsx to be just this:
+
+  const [src, setSrc] = useState(`https://intel.bestpokieslist.online/favicon/${domain}`);
+  useEffect(() => setSrc(`https://intel.bestpokieslist.online/favicon/${domain}`), [domain]);
+
+  <img
+    src={src}
+    alt=""
+    referrerPolicy="no-referrer"
+    loading="lazy"
+    decoding="async"
+    onError={() => setSrc(s => s === "/site-fallback.jpg" ? s : "/site-fallback.jpg")}
+  />
+
+Delete entirely:
+- the direct https://<domain>/favicon.ico attempt
+- the module-level pending queue and flusher
+- the localStorage "vault-icon:" cache and its TTL
+- the IntersectionObserver
+
+Keep /site-fallback.jpg as the onError target only.
+
+Then remove resolveSiteIconsBatch and its server fn from
+src/lib/casino.impl.server.ts and src/lib/casino.functions.ts if nothing else
+calls them. Leave resolveSiteIcon (singular) alone if it is still referenced;
+otherwise remove it too — tell me which you did.
+
+Why this also fixes the connection errors: every icon now comes from ONE host,
+so the browser reuses a handful of connections instead of opening hundreds
+against hundreds of different domains. loading="lazy" cuts it further.
+
+Don't touch layout, sizing, or the site-card CSS.
+
+Verify: build and typecheck pass. On the preview, essentially every card shows a
+real icon, no batch icon calls at all, and the console is clean with no
+ERR_CONNECTION_CLOSED.
+
+Report back: how many cards still fall back, and how many serverless calls a
+cold load of the full list now makes.

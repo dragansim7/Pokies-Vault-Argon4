@@ -1,0 +1,26 @@
+Context for the work ahead — hold these rules for every change:
+
+- Single user. No auth, no accounts, no sign-in, no database, no migrations.
+  Everything stays in localStorage.
+- No community features, no credits, no fetch packs, no rented cards.
+  Fetching is unlimited.
+- This app deploys to Vercel. Don't break the deploy, don't recreate
+  vite.config.ts or tsconfig.json, don't touch public/__grok/ or server/.
+- Live URL is https://pokies-vault-ax.grok.me/ and it currently works.
+  Every change must keep it working.
+- After every change: run npm run build and npm run typecheck, and confirm the
+  preview still renders with real content and a clean console.
+
+Here is the current state of the app so you don't have to rediscover it:
+
+The homepage (src/components/directory.tsx) queues one server-function call per
+visible card for status, and another per visible card for the favicon
+(src/components/site-icon.tsx). The fetcher (src/components/fetcher.tsx) fires
+one server-function call per domain, per credential. With 1,142 domains that is
+roughly 3,400 serverless invocations per session, all capped at 4 concurrent.
+
+Symptoms on the live app: the entire "Latest" group is stuck on "Checking" and
+never resolves, most favicons fall back to site-fallback.jpg, and the addedAt
+dates are batch artefacts (hundreds share the same minute).
+
+We are going to fix this in order. Confirm you understand and wait.

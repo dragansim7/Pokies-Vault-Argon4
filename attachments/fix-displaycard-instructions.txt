@@ -1,0 +1,68 @@
+TASK: Fix bonus card binding in the fetch-account flow so that card sections show the actual available and claimable bonuses on the account, instead of the advertised amounts from every bonus.
+
+CONTEXT
+The app fetches account data from multiple sites on the "fetch account" page via "fetch all sites". Cards are currently populated from the site promotion catalogue, so every bonus on every site renders an amount whether or not the account holds it. Only some cards should be lit and carry amounts; the rest stay greyed and amount-less.
+
+DATA SOURCES — use both, in this order
+1. Account-bound list: User.get("bonus") (returned by /users/syncData). This is the ONLY source that may mark a card as available or claimable.
+2. Site catalogue: _.deepGet(_.getVar("publicInfo"),"promotions"). Use for copy, description, imagery, sysnote and static limit metadata only. Never let it make a card lit.
+
+Mirror the existing precedence exactly:
+  packets = User.get("bonus") || _.deepGet(_.getVar("publicInfo"),"promotions")
+then treat packets from source 1 as claimable candidates and source 2 as reference-only.
+
+ELIGIBILITY PREDICATE — copy this logic, do not invent one
+  var cc = parseJsonSafe(bonus.claimConfig);
+  var lit = false;
+  if (bonus.amount || bonus.amount === 0) { lit = true; }
+  else if (isLogin === false && bonus.claimCondition === 'FREE' && !bonus.minTopup && !cc.depositTargetAmount) { lit = true; }
+  var state = lit ? 'available' : 'ineligible';
+
+Notes: amount === 0 counts as claimable (random or luckydraw value) and must still render an amount slot. "FREE" only qualifies while logged out and only with no minTopup and no cc.depositTargetAmount. Everything else is ineligible and greyed.
+
+Additional gate: if the bonus has showIfAmount === 1 and no amount, do not render it at all:
+  (1 !== parseInt(_.deepGet(bonus,"showIfAmount")) || bonus.amount)
+
+MATCH KEY — four parts, never id alone
+  id, transactionId, angpaoId, luckyId
+  matched = parseInt(a.id)===parseInt(b.id) && parseInt(a.transactionId||0)===parseInt(b.transactionId||0) && parseInt(a.angpaoId||0)===parseInt(b.angpaoId||0) && parseInt(a.luckyId||0)===parseInt(b.luckyId||0)
+id is a template id and repeats across deposit transactions, angpao batches and lucky draws. Stamp all four onto each card as data attributes (data-id, data-transaction-id, data-angpao-id, data-lucky-id) and join on all four when hydrating a section.
+
+SECTION BINDINGS — only on a matched, lit bonus
+- Claimable value: bonus.amount if present; else bonus.bonus + '%'; else bonus.bonusFixed. If displayAmount === 0 render a literal "?" instead of a number.
+- Turnover: bonus.minBet, show when >= 0.01.
+- Minimum withdrawal: bonus.minWithdraw, hide when cc.minWithdrawTimeAmount is set.
+- Maximum withdrawal: bonus.maxWithdraw. If transactionType === 'ANGPAO' and maxWithdraw < 1, render (maxWithdraw*100)+'%' instead of a currency figure.
+- Deposit band: bonus.minTopup and bonus.maxTopup — render a range when both exist, a single side when only one does.
+- Deposit count: bonus.minRound, show when > 0.
+- Claim cap: bonus.maxRound together with bonus.reset. Coerce maxRound to a string before interpolating.
+- Window: bonus.startDateTime and bonus.endDateTime — also drives lit vs greyed.
+- Whole info block: suppress entirely when cc.displayDescriptionOnly is set.
+On an ineligible or unmatched card, render the section with a placeholder and the greyed state, never a stale amount from the catalogue.
+
+MULTI-SITE
+Scope by site before matching. The same id exists on every site, so key the lookup on origin host plus the four-part match key. Dedupe cards on site + id + transactionId + angpaoId + luckyId. Each card must remember the host it came from so a claim posts to that host.
+
+RECOMPUTE TRIGGERS
+Re-evaluate every card's state after each claim and after every syncData. onclaimed already calls render(); additionally subscribe the card renderer to the refreshbalance event the balance view uses. Lit state must never survive a stale fetch.
+
+EDGE CASES
+- claimConfig is a JSON string on every bonus — parse defensively. The global JSON.parse is already monkey-patched to return null on failure; reuse it, and treat null as an empty config.
+- Outstanding claims block deposits (BonusConfig.HaveBonusDisallowDeposit plus any User.get("bonus") entry carrying an amount). Use the same check to drive an "unclaimed" badge so the user sees it before hitting the topup wall.
+- amount, bonus and bonusFixed can each be present independently. Precedence is amount, then bonus, then bonusFixed.
+- Numeric fields arrive as strings. Parse before comparing, format with the existing _.money helper only at render time.
+- Logged-out state: only FREE bonuses with no minTopup and no depositTargetAmount may be lit.
+
+DO NOT
+- Do not light a card because the catalogue has an amount.
+- Do not match on id alone.
+- Do not show a numeric amount when displayAmount is 0.
+- Do not render minWithdraw when minWithdrawTimeAmount is set.
+- Do not render an absolute currency max for a fractional ANGPAO cap.
+
+DONE WHEN
+1. A card is lit and shows a value only when the account actually holds that bonus.
+2. Catalogue-only bonuses appear greyed with no amount.
+3. Every section pulls from the correctly matched instance when two bonuses share an id.
+4. Claiming one card lights and greys the right siblings after the refresh, with no stale amounts.
+5. Deposit-blocking badges appear for outstanding unclaimed bonuses.

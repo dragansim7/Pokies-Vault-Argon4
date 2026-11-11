@@ -1,0 +1,6 @@
+{
+  "name": "Pokies Vault",
+  "description": "Smart casino account and bonus vault for tracking wallet balances and claiming promotions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
