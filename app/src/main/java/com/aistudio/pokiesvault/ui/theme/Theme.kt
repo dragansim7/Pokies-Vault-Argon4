@@ -7,7 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
 
 @Composable
@@ -48,10 +50,20 @@ fun PokiesVaultTheme(
         }
     }
 
-    CompositionLocalProvider(LocalVaultColors provides colors) {
+    val baseDensity = LocalDensity.current
+    val compactDensity = Density(
+        density = baseDensity.density * 0.85f,
+        fontScale = baseDensity.fontScale * 0.85f
+    )
+
+    CompositionLocalProvider(
+        LocalVaultColors provides colors,
+        LocalDensity provides compactDensity
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             content = content
         )
     }
 }
+

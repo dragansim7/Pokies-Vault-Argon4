@@ -156,10 +156,42 @@ data class DomainCheck(
 data class EgressIpInfo(
     val ip: String = "",
     val isp: String = "",
+    val asn: String = "",
     val countryCode: String = "",
     val city: String = "",
+    val pingMs: Long = 0L,
+    val activeMask: String = "Chrome 120.0 · Win10 x64",
     val isCloudOrHosting: Boolean = false,
     val isLoading: Boolean = true,
     val error: String? = null
 )
+
+enum class WorkerPhase(val label: String) {
+    IDLE("IDLE"),
+    RESOLVING("RESOLVING"),
+    AUTHENTICATING("AUTH"),
+    SYNCING("SYNCING"),
+    BACKOFF("BACKOFF"),
+    DONE("DONE")
+}
+
+data class WorkerStatus(
+    val workerId: Int,
+    val phase: WorkerPhase = WorkerPhase.IDLE,
+    val currentHost: String = "—",
+    val hostStartedAtMs: Long = 0L,
+    val hostElapsedMs: Long = 0L,
+    val lastHostPingMs: Long = 0L
+)
+
+data class WorkerBatchTelemetry(
+    val doneCount: Int = 0,
+    val totalCount: Int = 0,
+    val queueCount: Int = 0,
+    val avgPingMs: Long = 0L,
+    val speedHostsPerSec: Double = 0.0,
+    val elapsedMs: Long = 0L,
+    val workers: List<WorkerStatus> = (1..3).map { WorkerStatus(workerId = it) }
+)
+
 

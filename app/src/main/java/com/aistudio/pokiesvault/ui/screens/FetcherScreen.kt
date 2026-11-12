@@ -1,7 +1,10 @@
 package com.aistudio.pokiesvault.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,11 +26,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aistudio.pokiesvault.data.catalog.CatalogData
 import com.aistudio.pokiesvault.data.model.AccountResult
 import com.aistudio.pokiesvault.data.model.EgressIpInfo
+import com.aistudio.pokiesvault.data.model.WorkerBatchTelemetry
+import com.aistudio.pokiesvault.data.model.WorkerPhase
+import com.aistudio.pokiesvault.data.model.WorkerStatus
 import com.aistudio.pokiesvault.ui.components.ResponsibleGamblingFooter
 import com.aistudio.pokiesvault.ui.components.ResultCard
 import com.aistudio.pokiesvault.ui.theme.*
@@ -35,6 +42,7 @@ import com.aistudio.pokiesvault.ui.viewmodel.VaultUiState
 import com.aistudio.pokiesvault.ui.viewmodel.VaultViewModel
 import com.aistudio.pokiesvault.util.DomainUtil
 import com.aistudio.pokiesvault.util.FormatUtil
+import java.util.Locale
 
 @Composable
 fun FetcherScreen(
@@ -110,10 +118,12 @@ fun FetcherScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Live Egress IP & Browser Header Profile Badge
-            EgressNetworkBadge(
+            // 1. Outgoing Egress IP & Mask Box
+            OutgoingIpTelemetryCard(
                 info = uiState.egressIpInfo,
-                onRefresh = { viewModel.refreshEgressIp() }
+                merchantCacheCount = uiState.merchantCacheCount,
+                onRefresh = { viewModel.refreshEgressIp() },
+                onClearMerchantCache = { viewModel.clearMerchantCache() }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -375,21 +385,16 @@ fun FetcherScreen(
                         color = colors.cyan,
                         fontSize = 12.sp
                     )
-
-                    if (uiState.fetchProgressTotal > 0) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val progressFraction = uiState.fetchProgressDone.toFloat() / uiState.fetchProgressTotal.toFloat()
-                        LinearProgressIndicator(
-                            progress = { progressFraction.coerceIn(0f, 1f) },
-                            color = colors.cyan,
-                            trackColor = colors.panel2,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                        )
-                    }
                 }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2. Live Worker Statistical Box (always visible)
+            WorkerStatsTelemetryCard(
+                telemetry = uiState.workerTelemetry,
+                isFetching = uiState.isFetching
+            )
 
             // Diffs
             if (uiState.fetchDiffs.isNotEmpty()) {
@@ -520,9 +525,11 @@ fun FetcherScreen(
 }
 
 @Composable
-private fun EgressNetworkBadge(
+fun OutgoingIpTelemetryCard(
     info: EgressIpInfo,
+    merchantCacheCount: Int,
     onRefresh: () -> Unit,
+    onClearMerchantCache: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalVaultColors.current
@@ -534,10 +541,10 @@ private fun EgressNetworkBadge(
     }
 
     val badgeLabel = when {
-        info.isLoading -> "CHECKING IP…"
+        info.isLoading -> "RESOLVING…"
         info.error != null -> "OFFLINE"
-        info.isCloudOrHosting -> "CLOUD PREVIEW IP"
-        else -> "LOCAL DEVICE IP"
+        info.isCloudOrHosting -> "CLOUD / VPN"
+        else -> "CARRIER / LOCAL"
     }
 
     val locationSuffix = buildString {
@@ -551,12 +558,13 @@ private fun EgressNetworkBadge(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .testTag("egress_network_badge"),
+            .testTag("outgoing_ip_telemetry_card"),
         shape = RoundedCornerShape(14.dp),
-        color = colors.panel2,
+        color = colors.panel,
         border = androidx.compose.foundation.BorderStroke(1.dp, statusColor.copy(alpha = 0.45f))
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            // Top Row: Public Outgoing IP + Ping (ms) + One-Tap Refresh
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -568,21 +576,39 @@ private fun EgressNetworkBadge(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(9.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
                             .background(statusColor)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(
-                                text = if (info.isLoading) "Detecting outgoing IP…" else "Outgoing IP: ${info.ip}",
+                                text = if (info.isLoading) "Resolving egress IP…" else info.ip,
                                 color = colors.fg,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp
+                                fontSize = 14.sp
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            if (!info.isLoading && info.pingMs > 0L) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.panel2,
+                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = "${info.pingMs} ms",
+                                        color = colors.cyan,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = statusColor.copy(alpha = 0.16f),
@@ -597,12 +623,19 @@ private fun EgressNetworkBadge(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        val ispText = if (info.isLoading) {
-                            "Checking ISP & network route seen by target domains"
+
+                        Spacer(modifier = Modifier.height(3.dp))
+
+                        // ISP, ASN & Geolocation line
+                        val ispGeoText = if (info.isLoading) {
+                            "Querying ipwho.is / ipapi.co / ipify.org…"
                         } else {
                             buildString {
-                                append(info.isp.ifBlank { "Direct Connection" })
+                                append(info.isp.ifBlank { "Direct Network" })
+                                if (info.asn.isNotBlank()) {
+                                    append(" · ")
+                                    append(info.asn)
+                                }
                                 if (locationSuffix.isNotBlank()) {
                                     append(" · ")
                                     append(locationSuffix)
@@ -610,9 +643,11 @@ private fun EgressNetworkBadge(
                             }
                         }
                         Text(
-                            text = ispText,
+                            text = ispGeoText,
                             color = colors.muted,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -641,35 +676,335 @@ private fun EgressNetworkBadge(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
+            // Active Mask & Merchant ID Cache Row
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.VerifiedUser,
-                    contentDescription = null,
-                    tint = colors.cyan,
-                    modifier = Modifier.size(13.dp)
-                )
-                Text(
-                    text = "Chrome 131 Mobile Headers · Client Hints · Zero JS/Hardware ID Sent",
-                    color = colors.faint,
-                    fontSize = 10.sp
-                )
-            }
+                // Active Browser Mask Pill
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.panel2,
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.border),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = colors.cyan,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "Mask: ${info.activeMask}",
+                            color = colors.fg,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
 
-            if (!info.isLoading && info.isCloudOrHosting) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Tip: Preview emulator runs in Google Cloud. Install the APK on your phone to fetch via your local Wi-Fi or 4G/5G IP.",
-                    color = colors.slow,
-                    fontSize = 10.sp,
-                    lineHeight = 13.sp
-                )
+                // Tappable Merchant ID Cache Pill
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.panel2,
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        if (merchantCacheCount > 0) colors.cyan.copy(alpha = 0.5f) else colors.border
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onClearMerchantCache() }
+                        .testTag("clear_merchant_cache_pill")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = "Clear cached Merchant IDs",
+                            tint = if (merchantCacheCount > 0) colors.cyan else colors.muted,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "IDs: $merchantCacheCount · Clear",
+                            color = if (merchantCacheCount > 0) colors.cyan else colors.muted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+@Composable
+fun WorkerStatsTelemetryCard(
+    telemetry: WorkerBatchTelemetry,
+    isFetching: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalVaultColors.current
+    val rawProgress = if (telemetry.totalCount > 0) {
+        (telemetry.doneCount.toFloat() / telemetry.totalCount.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = 180),
+        label = "batch_progress"
+    )
+
+    val elapsedSecondsText = String.format(Locale.US, "%.1fs", telemetry.elapsedMs / 1000.0)
+    val speedText = String.format(Locale.US, "%.1f/s", telemetry.speedHostsPerSec)
+    val avgPingText = if (telemetry.avgPingMs > 0L) "${telemetry.avgPingMs} ms" else "— ms"
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("worker_stats_telemetry_card"),
+        shape = RoundedCornerShape(16.dp),
+        color = colors.panel,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isFetching) colors.cyan.copy(alpha = 0.5f) else colors.border
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Header + Live 100ms Batch Timer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (isFetching) colors.cyan else colors.muted)
+                    )
+                    Text(
+                        text = if (isFetching) "LIVE WORKER TELEMETRY (3 WORKERS)" else "WORKER TELEMETRY (3 WORKERS)",
+                        color = if (isFetching) colors.cyan else colors.fg,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.panel2,
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.border)
+                ) {
+                    Text(
+                        text = "⏱ $elapsedSecondsText",
+                        color = if (isFetching) colors.cyan else colors.muted,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Animated Batch Progress Bar
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                color = colors.cyan,
+                trackColor = colors.panel2,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4 Key Stat Tiles: Done, Queue, Avg Ping, Speed
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                TelemetryStatTile(
+                    label = "Done",
+                    value = "${telemetry.doneCount}/${telemetry.totalCount}",
+                    valueColor = colors.fg,
+                    modifier = Modifier.weight(1f)
+                )
+                TelemetryStatTile(
+                    label = "Queue",
+                    value = "${telemetry.queueCount}",
+                    valueColor = if (telemetry.queueCount > 0) colors.cyan else colors.muted,
+                    modifier = Modifier.weight(1f)
+                )
+                TelemetryStatTile(
+                    label = "Avg Ping",
+                    value = avgPingText,
+                    valueColor = colors.live,
+                    modifier = Modifier.weight(1f)
+                )
+                TelemetryStatTile(
+                    label = "Speed",
+                    value = speedText,
+                    valueColor = colors.violet,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Per-Worker Live Status Rows
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                telemetry.workers.forEach { worker ->
+                    WorkerLiveRow(worker = worker)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TelemetryStatTile(
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalVaultColors.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        color = colors.panel2,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = label.uppercase(Locale.US),
+                color = colors.faint,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = valueColor,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkerLiveRow(
+    worker: WorkerStatus
+) {
+    val colors = LocalVaultColors.current
+    val (phaseLabel, phaseColor) = when (worker.phase) {
+        WorkerPhase.IDLE -> "IDLE" to colors.muted
+        WorkerPhase.RESOLVING -> "RESOLVE" to colors.cyan
+        WorkerPhase.AUTHENTICATING -> "AUTH" to colors.violet
+        WorkerPhase.SYNCING -> "SYNC" to colors.live
+        WorkerPhase.BACKOFF -> "BACKOFF" to colors.slow
+        WorkerPhase.DONE -> "DONE" to colors.live
+    }
+
+    val hostText = worker.currentHost.ifBlank { "Standing by" }
+    val timerText = if (worker.phase == WorkerPhase.IDLE && worker.hostElapsedMs == 0L) {
+        if (worker.lastHostPingMs > 0L) "${worker.lastHostPingMs}ms" else "0.0s"
+    } else {
+        String.format(Locale.US, "%.1fs", worker.hostElapsedMs / 1000.0)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("worker_row_${worker.workerId}"),
+        shape = RoundedCornerShape(8.dp),
+        color = colors.panel2,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.border)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "W#${worker.workerId}",
+                    color = colors.muted,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp
+                )
+                Surface(
+                    shape = RoundedCornerShape(5.dp),
+                    color = phaseColor.copy(alpha = 0.16f),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, phaseColor.copy(alpha = 0.6f))
+                ) {
+                    Text(
+                        text = phaseLabel,
+                        color = phaseColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+                Text(
+                    text = hostText,
+                    color = if (worker.currentHost.isNotBlank()) colors.fg else colors.faint,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = timerText,
+                color = if (worker.phase != WorkerPhase.IDLE && worker.phase != WorkerPhase.DONE) colors.cyan else colors.muted,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
 

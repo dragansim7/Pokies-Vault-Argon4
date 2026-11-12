@@ -1,5 +1,8 @@
 package com.aistudio.pokiesvault.ui.screens
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -35,8 +39,30 @@ fun DomainIntelScreen(
     modifier: Modifier = Modifier
 ) {
     val colors = LocalVaultColors.current
+    val context = LocalContext.current
     var addInput by remember { mutableStateOf("") }
-    var showBulkDialog by remember { mutableStateOf(false) }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                var displayName = ""
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0 && cursor.moveToFirst()) {
+                        displayName = cursor.getString(nameIndex) ?: ""
+                    }
+                }
+                val content = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                viewModel.addBulkDomainsIntel(content, displayName)
+            } catch (e: Exception) {
+                viewModel.addBulkDomainsIntel("", "")
+            }
+        }
+    }
 
     val allSites = remember(uiState) { viewModel.getFilteredCatalogSites() }
     val allDomains = remember(allSites) { allSites.map { it.domain } }
@@ -214,12 +240,23 @@ fun DomainIntelScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { showBulkDialog = true },
+                            onClick = {
+                                filePickerLauncher.launch(
+                                    arrayOf("text/*", "text/plain", "text/csv", "application/octet-stream", "*/*")
+                                )
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = colors.panel2),
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f).testTag("intel_bulk_btn")
+                            modifier = Modifier.weight(1.1f).testTag("intel_bulk_btn")
                         ) {
-                            Text("Import text", color = colors.fg, fontSize = 12.sp)
+                            Icon(
+                                imageVector = Icons.Default.UploadFile,
+                                contentDescription = "Import file",
+                                tint = colors.cyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import file", color = colors.fg, fontSize = 12.sp)
                         }
 
                         Button(
@@ -276,7 +313,7 @@ fun DomainIntelScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "One domain per line when importing. Check status tests a selection directly.",
+                        "Tap Import file to select a .txt or .csv domain list from device storage.",
                         color = colors.faint,
                         fontSize = 11.sp
                     )
@@ -328,7 +365,7 @@ fun DomainIntelScreen(
                 ) {
                     Box(modifier = Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            if (allDomains.isNotEmpty()) "No domains match that search." else "No domains yet. Add one above or import a list.",
+                            if (allDomains.isNotEmpty()) "No domains match that search." else "No domains yet. Add one above or import a file.",
                             color = colors.muted,
                             fontSize = 13.sp
                         )
@@ -418,73 +455,7 @@ fun DomainIntelScreen(
             ResponsibleGamblingFooter()
         }
     }
-
-    if (showBulkDialog) {
-        BulkImportDialog(
-            onDismiss = { showBulkDialog = false },
-            onImport = { text ->
-                viewModel.addBulkDomainsIntel(text)
-                showBulkDialog = false
-            }
-        )
-    }
 }
 
 private data class Counts(val total: Int, val up: Int, val slow: Int, val redirect: Int, val down: Int)
 
-@Composable
-fun BulkImportDialog(
-    onDismiss: () -> Unit,
-    onImport: (String) -> Unit
-) {
-    val colors = LocalVaultColors.current
-    var text by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Import domains", color = colors.fg, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text(
-                    "Paste domain names separated by line breaks, commas, or spaces (e.g. yeah96.com, 9au.com).",
-                    color = colors.muted,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    placeholder = { Text("domain1.com\ndomain2.com", color = colors.faint) },
-                    minLines = 5,
-                    maxLines = 10,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = colors.fg,
-                        unfocusedTextColor = colors.fg,
-                        focusedBorderColor = colors.cyan,
-                        unfocusedBorderColor = colors.border,
-                        focusedContainerColor = colors.panel2,
-                        unfocusedContainerColor = colors.panel2
-                    ),
-                    modifier = Modifier.fillMaxWidth().testTag("bulk_import_field")
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onImport(text) },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.cyan),
-                modifier = Modifier.testTag("bulk_import_confirm_btn")
-            ) {
-                Text("Import", color = colors.ink, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.muted)
-            }
-        },
-        containerColor = colors.panel,
-        shape = RoundedCornerShape(16.dp)
-    )
-}

@@ -83,24 +83,33 @@ class CasinoApiService {
         .followRedirects(false)
         .build()
 
-    private val userAgent =
-        "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    companion object {
+        const val ACTIVE_BROWSER_MASK = "Chrome 120.0 · Win10 x64"
+    }
 
-    private val secChUa = "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""
+    private val userAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    private val secChUa = "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\""
 
     private val merchantPattern = Pattern.compile("MERCHANTID\\s*=\\s*['\"]?(\\d+)['\"]?", Pattern.CASE_INSENSITIVE)
 
+    fun getMerchantCacheCount(): Int = merchantCache.size
+
+    fun clearMerchantCache() {
+        merchantCache.clear()
+    }
+
     /**
-     * Applies realistic Mobile Chrome document navigation headers + Client Hints for initial GET / requests.
-     * Uses Android 10+ Privacy Sandbox Reduced User-Agent ("K") so no hardware model or device serial is leaked.
+     * Applies Chrome 120.0 · Win10 x64 document navigation headers + Client Hints for initial GET / requests.
      */
     private fun Request.Builder.applyDocumentNavigationHeaders(): Request.Builder = this
         .header("User-Agent", userAgent)
         .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .header("Accept-Language", "en-AU,en;q=0.9")
         .header("Sec-CH-UA", secChUa)
-        .header("Sec-CH-UA-Mobile", "?1")
-        .header("Sec-CH-UA-Platform", "\"Android\"")
+        .header("Sec-CH-UA-Mobile", "?0")
+        .header("Sec-CH-UA-Platform", "\"Windows\"")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
         .header("Sec-Fetch-Site", "none")
@@ -108,7 +117,7 @@ class CasinoApiService {
         .header("Upgrade-Insecure-Requests", "1")
 
     /**
-     * Applies realistic Mobile Chrome same-origin XHR/Fetch headers + Client Hints for POST /api/v1/index.php requests.
+     * Applies Chrome 120.0 · Win10 x64 same-origin XHR/Fetch headers + Client Hints for POST /api/v1/index.php requests.
      */
     private fun Request.Builder.applySameOriginAjaxHeaders(host: String): Request.Builder = this
         .header("User-Agent", userAgent)
@@ -119,19 +128,20 @@ class CasinoApiService {
         .header("Referer", "https://$host/")
         .header("X-Requested-With", "XMLHttpRequest")
         .header("Sec-CH-UA", secChUa)
-        .header("Sec-CH-UA-Mobile", "?1")
-        .header("Sec-CH-UA-Platform", "\"Android\"")
+        .header("Sec-CH-UA-Mobile", "?0")
+        .header("Sec-CH-UA-Platform", "\"Windows\"")
         .header("Sec-Fetch-Dest", "empty")
         .header("Sec-Fetch-Mode", "cors")
         .header("Sec-Fetch-Site", "same-origin")
 
     /**
-     * Queries the device's active public egress IP, ISP/carrier, and country directly from the Android client.
-     * Because all fetches run directly on-device via OkHttpClient, this is the exact IP seen by target domains.
+     * Resolves the device's current public egress IP, lookup ping (ms), ISP, ASN, and geolocation
+     * with multi-endpoint fallback across ipwho.is, ipapi.co, and ipify.org.
      */
     suspend fun fetchEgressIpInfo(): EgressIpInfo = withContext(Dispatchers.IO) {
-        // Primary: ipwho.is (returns IP, ISP/ASN org, country_code, city, and hosting flag)
+        // Endpoint 1: ipwho.is (returns ip, connection.asn, connection.isp, connection.org, city, country_code, security.hosting)
         try {
+            val t0 = System.currentTimeMillis()
             val req = Request.Builder()
                 .url("https://ipwho.is/")
                 .header("User-Agent", userAgent)
@@ -139,6 +149,7 @@ class CasinoApiService {
                 .get()
                 .build()
             probeClient.newCall(req).execute().use { res ->
+                val pingMs = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
                 val body = res.body?.string()
                 if (res.isSuccessful && !body.isNullOrBlank()) {
                     val json = JSONObject(body)
@@ -148,6 +159,8 @@ class CasinoApiService {
                             val country = json.optString("country_code", "").trim()
                             val city = json.optString("city", "").trim()
                             val conn = json.optJSONObject("connection")
+                            val asnNum = conn?.optLong("asn", 0L) ?: 0L
+                            val asnStr = if (asnNum > 0L) "AS$asnNum" else ""
                             val ispRaw = conn?.optString("isp", "")?.ifBlank { conn.optString("org", "") }.orEmpty().trim()
                             val orgRaw = conn?.optString("org", "").orEmpty().trim()
                             val ispLabel = ispRaw.ifBlank { orgRaw }.ifBlank { "Direct Network" }
@@ -157,8 +170,11 @@ class CasinoApiService {
                             return@withContext EgressIpInfo(
                                 ip = ip,
                                 isp = ispLabel,
+                                asn = asnStr,
                                 countryCode = country,
                                 city = city,
+                                pingMs = pingMs,
+                                activeMask = ACTIVE_BROWSER_MASK,
                                 isCloudOrHosting = isCloud,
                                 isLoading = false,
                                 error = null
@@ -169,29 +185,35 @@ class CasinoApiService {
             }
         } catch (_: Exception) {}
 
-        // Fallback 1: ipinfo.io/json
+        // Endpoint 2: ipapi.co/json/ (returns ip, asn, org, city, country_code)
         try {
+            val t0 = System.currentTimeMillis()
             val req = Request.Builder()
-                .url("https://ipinfo.io/json")
+                .url("https://ipapi.co/json/")
                 .header("User-Agent", userAgent)
                 .header("Accept", "application/json")
                 .get()
                 .build()
             probeClient.newCall(req).execute().use { res ->
+                val pingMs = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
                 val body = res.body?.string()
                 if (res.isSuccessful && !body.isNullOrBlank()) {
                     val json = JSONObject(body)
                     val ip = json.optString("ip", "").trim()
-                    if (ip.isNotEmpty()) {
+                    if (ip.isNotEmpty() && !json.optBoolean("error", false)) {
+                        val asnStr = json.optString("asn", "").trim()
                         val orgRaw = json.optString("org", "").replace(Regex("^AS\\d+\\s*"), "").trim()
-                        val country = json.optString("country", "").trim()
+                        val country = json.optString("country_code", "").trim()
                         val city = json.optString("city", "").trim()
                         val ispLabel = orgRaw.ifBlank { "Direct Network" }
                         return@withContext EgressIpInfo(
                             ip = ip,
                             isp = ispLabel,
+                            asn = asnStr,
                             countryCode = country,
                             city = city,
+                            pingMs = pingMs,
+                            activeMask = ACTIVE_BROWSER_MASK,
                             isCloudOrHosting = isCloudProviderName(ispLabel),
                             isLoading = false,
                             error = null
@@ -201,8 +223,9 @@ class CasinoApiService {
             }
         } catch (_: Exception) {}
 
-        // Fallback 2: api.ipify.org
+        // Endpoint 3: api.ipify.org?format=json
         try {
+            val t0 = System.currentTimeMillis()
             val req = Request.Builder()
                 .url("https://api.ipify.org?format=json")
                 .header("User-Agent", userAgent)
@@ -210,6 +233,7 @@ class CasinoApiService {
                 .get()
                 .build()
             probeClient.newCall(req).execute().use { res ->
+                val pingMs = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
                 val body = res.body?.string()
                 if (res.isSuccessful && !body.isNullOrBlank()) {
                     val json = JSONObject(body)
@@ -218,8 +242,11 @@ class CasinoApiService {
                         return@withContext EgressIpInfo(
                             ip = ip,
                             isp = "Direct Egress",
+                            asn = "",
                             countryCode = "",
                             city = "",
+                            pingMs = pingMs,
+                            activeMask = ACTIVE_BROWSER_MASK,
                             isCloudOrHosting = false,
                             isLoading = false,
                             error = null
@@ -232,6 +259,9 @@ class CasinoApiService {
         EgressIpInfo(
             ip = "Unavailable",
             isp = "Check network connection",
+            asn = "",
+            pingMs = 0L,
+            activeMask = ACTIVE_BROWSER_MASK,
             isLoading = false,
             error = "Could not resolve public IP"
         )
@@ -281,6 +311,7 @@ class CasinoApiService {
     private suspend fun <T> executeWithRetry(
         hostForPacing: String,
         maxAttempts: Int = 3,
+        onBackoff: () -> Unit = {},
         requestFactory: () -> Request,
         block: (Response) -> T
     ): T {
@@ -293,6 +324,7 @@ class CasinoApiService {
                     val code = response.code
                     if (code == 429 || code == 502 || code == 503 || code == 504) {
                         if (attempt < maxAttempts) {
+                            onBackoff()
                             val retryAfterSec = response.header("Retry-After")?.trim()?.toLongOrNull()
                             val backoffMs = when {
                                 retryAfterSec != null && retryAfterSec in 1..15 -> retryAfterSec * 1000L
@@ -310,12 +342,14 @@ class CasinoApiService {
             } catch (e: SocketTimeoutException) {
                 lastException = e
                 if (attempt < maxAttempts) {
+                    onBackoff()
                     delay(500L * attempt + Random.nextLong(100L, 250L))
                 }
             } catch (e: IOException) {
                 lastException = e
                 if (e.message == "rate-limited") throw e
                 if (attempt < maxAttempts) {
+                    onBackoff()
                     delay(450L * attempt + Random.nextLong(100L, 250L))
                 }
             }
@@ -327,7 +361,10 @@ class CasinoApiService {
      * Resolves and caches the canonical host and MERCHANTID for a domain (TTL: 30 minutes).
      * Eliminates redundant homepage scrapes when testing fallback credentials on the same domain.
      */
-    private suspend fun resolveMerchantEndpoint(domain: String): ResolvedMerchant {
+    private suspend fun resolveMerchantEndpoint(
+        domain: String,
+        onBackoff: () -> Unit = {}
+    ): ResolvedMerchant {
         val now = System.currentTimeMillis()
         val cached = merchantCache[domain]
         if (cached != null && (now - cached.resolvedAt) < 30 * 60 * 1000L) {
@@ -337,6 +374,7 @@ class CasinoApiService {
         val resolved = executeWithRetry(
             hostForPacing = domain,
             maxAttempts = 2,
+            onBackoff = onBackoff,
             requestFactory = {
                 Request.Builder()
                     .url("https://$domain/")
@@ -556,7 +594,8 @@ class CasinoApiService {
     suspend fun fetchCasinoAccount(
         rawDomain: String,
         phoneRaw: String,
-        passwordRaw: String
+        passwordRaw: String,
+        onPhaseChange: (WorkerPhase) -> Unit = {}
     ): AccountResult = withContext(Dispatchers.IO) {
         val domain = DomainUtil.normalizeDomain(rawDomain)
         if (!DomainUtil.isPublicDomain(domain)) {
@@ -572,7 +611,11 @@ class CasinoApiService {
 
         try {
             // Step 0: Resolve (or reuse cached) merchantId & canonical host
-            val endpoint = resolveMerchantEndpoint(domain)
+            onPhaseChange(WorkerPhase.RESOLVING)
+            val endpoint = resolveMerchantEndpoint(
+                domain = domain,
+                onBackoff = { onPhaseChange(WorkerPhase.BACKOFF) }
+            )
             if (!endpoint.supported) {
                 return@withContext AccountResult.Err(domain, "unsupported", "Different login system")
             }
@@ -581,6 +624,7 @@ class CasinoApiService {
             val merchantId = endpoint.merchantId
 
             // Step 1: Login with retry & rate-limit backoff
+            onPhaseChange(WorkerPhase.AUTHENTICATING)
             val loginBody = FormBody.Builder()
                 .add("module", "/users/login")
                 .add("merchantId", merchantId)
@@ -594,7 +638,9 @@ class CasinoApiService {
             val loginJson = executeWithRetry(
                 hostForPacing = host,
                 maxAttempts = 3,
+                onBackoff = { onPhaseChange(WorkerPhase.BACKOFF) },
                 requestFactory = {
+                    onPhaseChange(WorkerPhase.AUTHENTICATING)
                     Request.Builder()
                         .url("https://$host/api/v1/index.php")
                         .applySameOriginAjaxHeaders(host)
@@ -622,6 +668,7 @@ class CasinoApiService {
             }
 
             // Step 2: syncData with retry & rate-limit backoff
+            onPhaseChange(WorkerPhase.SYNCING)
             val syncBody = FormBody.Builder()
                 .add("module", "/users/syncData")
                 .add("merchantId", merchantId)
@@ -634,7 +681,9 @@ class CasinoApiService {
             val syncJson = executeWithRetry(
                 hostForPacing = host,
                 maxAttempts = 3,
+                onBackoff = { onPhaseChange(WorkerPhase.BACKOFF) },
                 requestFactory = {
+                    onPhaseChange(WorkerPhase.SYNCING)
                     Request.Builder()
                         .url("https://$host/api/v1/index.php")
                         .applySameOriginAjaxHeaders(host)

@@ -35,6 +35,8 @@ data class VaultUiState(
     val showRejectedSites: Boolean = false,
     val cloudSyncError: String? = null,
     val egressIpInfo: EgressIpInfo = EgressIpInfo(),
+    val merchantCacheCount: Int = 0,
+    val workerTelemetry: WorkerBatchTelemetry = WorkerBatchTelemetry(),
 
     // Domain Intel State
     val intelChecks: Map<String, DomainCheck> = emptyMap(),
@@ -156,8 +158,18 @@ class VaultViewModel(
                 it.copy(egressIpInfo = it.egressIpInfo.copy(isLoading = true, error = null))
             }
             val info = apiService.fetchEgressIpInfo()
-            _uiState.update { it.copy(egressIpInfo = info) }
+            _uiState.update {
+                it.copy(
+                    egressIpInfo = info,
+                    merchantCacheCount = apiService.getMerchantCacheCount()
+                )
+            }
         }
+    }
+
+    fun clearMerchantCache() {
+        apiService.clearMerchantCache()
+        _uiState.update { it.copy(merchantCacheCount = 0) }
     }
 
     // Theme
@@ -295,6 +307,12 @@ class VaultViewModel(
 
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
+            val batchStartMs = System.currentTimeMillis()
+            val workerStates = java.util.concurrent.ConcurrentHashMap<Int, WorkerStatus>()
+            for (idx in 1..3) {
+                workerStates[idx] = WorkerStatus(workerId = idx, phase = WorkerPhase.IDLE, currentHost = "—")
+            }
+
             _uiState.update {
                 it.copy(
                     isFetching = true,
@@ -303,7 +321,16 @@ class VaultViewModel(
                     fetchStatusMessage = if (uniqueDomains.size == 1) "Checking ${uniqueDomains[0]}…" else "Checking ${uniqueDomains.size} sites…",
                     currentFetchRows = emptyList(),
                     fetchDiffs = emptyList(),
-                    showRejectedSites = false
+                    showRejectedSites = false,
+                    workerTelemetry = WorkerBatchTelemetry(
+                        doneCount = 0,
+                        totalCount = uniqueDomains.size,
+                        queueCount = uniqueDomains.size,
+                        avgPingMs = 0L,
+                        speedHostsPerSec = 0.0,
+                        elapsedMs = 0L,
+                        workers = (1..3).map { id -> workerStates[id]!! }
+                    )
                 )
             }
 
@@ -313,20 +340,91 @@ class VaultViewModel(
             }
 
             val collected = mutableListOf<AccountResult>()
+            val hostPings = mutableListOf<Long>()
             val mutex = java.lang.Object()
-
             val queue = java.util.concurrent.ConcurrentLinkedQueue(uniqueDomains)
+
+            fun buildTelemetrySnapshot(nowMs: Long): WorkerBatchTelemetry {
+                val elapsed = (nowMs - batchStartMs).coerceAtLeast(1L)
+                val done: Int
+                val avgPing: Long
+                synchronized(mutex) {
+                    done = collected.size
+                    avgPing = if (hostPings.isNotEmpty()) hostPings.sum() / hostPings.size else 0L
+                }
+                val remaining = (uniqueDomains.size - done).coerceAtLeast(0)
+                val speed = if (elapsed >= 100L && done > 0) {
+                    (done.toDouble() * 1000.0) / elapsed.toDouble()
+                } else {
+                    0.0
+                }
+                val liveWorkers = (1..3).map { id ->
+                    val ws = workerStates[id] ?: WorkerStatus(workerId = id)
+                    val hostElapsed = if (ws.phase != WorkerPhase.IDLE && ws.phase != WorkerPhase.DONE && ws.hostStartedAtMs > 0L) {
+                        (nowMs - ws.hostStartedAtMs).coerceAtLeast(0L)
+                    } else {
+                        ws.hostElapsedMs
+                    }
+                    ws.copy(hostElapsedMs = hostElapsed)
+                }
+                return WorkerBatchTelemetry(
+                    doneCount = done,
+                    totalCount = uniqueDomains.size,
+                    queueCount = remaining,
+                    avgPingMs = avgPing,
+                    speedHostsPerSec = speed,
+                    elapsedMs = elapsed,
+                    workers = liveWorkers
+                )
+            }
+
+            // 100ms live telemetry ticker for smooth batch & per-host timers
+            val tickerJob = launch {
+                while (isActive) {
+                    delay(100L)
+                    val now = System.currentTimeMillis()
+                    _uiState.update { current ->
+                        current.copy(
+                            workerTelemetry = buildTelemetrySnapshot(now),
+                            merchantCacheCount = apiService.getMerchantCacheCount()
+                        )
+                    }
+                }
+            }
+
             val workers = (1..3).map { workerIdx ->
                 launch {
                     // Slight initial worker stagger so all 3 workers do not fire at t=0ms simultaneously
                     delay((workerIdx - 1) * 140L)
                     while (isActive) {
                         val domain = queue.poll() ?: break
+                        val hostStartMs = System.currentTimeMillis()
+                        workerStates[workerIdx] = WorkerStatus(
+                            workerId = workerIdx,
+                            phase = WorkerPhase.RESOLVING,
+                            currentHost = domain,
+                            hostStartedAtMs = hostStartMs,
+                            hostElapsedMs = 0L
+                        )
+
                         var result: AccountResult = AccountResult.Err(domain, "other", "No credentials")
 
                         for ((phone, password) in validCreds) {
                             if (!isActive) break
-                            val res = apiService.fetchCasinoAccount(domain, phone, password)
+                            val res = apiService.fetchCasinoAccount(
+                                rawDomain = domain,
+                                phoneRaw = phone,
+                                passwordRaw = password,
+                                onPhaseChange = { newPhase ->
+                                    val prev = workerStates[workerIdx]
+                                    if (prev != null) {
+                                        workerStates[workerIdx] = prev.copy(
+                                            phase = newPhase,
+                                            hostElapsedMs = (System.currentTimeMillis() - hostStartMs).coerceAtLeast(0L)
+                                        )
+                                    }
+                                }
+                            )
                             if (res is AccountResult.Ok) {
                                 repository.rememberAccount(domain)
                                 result = res
@@ -338,21 +436,46 @@ class VaultViewModel(
                             }
                         }
 
+                        val hostDurationMs = (System.currentTimeMillis() - hostStartMs).coerceAtLeast(1L)
+                        workerStates[workerIdx] = WorkerStatus(
+                            workerId = workerIdx,
+                            phase = WorkerPhase.IDLE,
+                            currentHost = domain,
+                            hostStartedAtMs = 0L,
+                            hostElapsedMs = hostDurationMs,
+                            lastHostPingMs = hostDurationMs
+                        )
+
                         synchronized(mutex) {
                             collected.add(result)
+                            hostPings.add(hostDurationMs)
                             val done = collected.size
                             val sorted = collected.sortedBy { it.domain }
+                            val now = System.currentTimeMillis()
                             _uiState.update {
                                 it.copy(
                                     fetchProgressDone = done,
-                                    currentFetchRows = sorted
+                                    currentFetchRows = sorted,
+                                    merchantCacheCount = apiService.getMerchantCacheCount(),
+                                    workerTelemetry = buildTelemetrySnapshot(now)
                                 )
                             }
                         }
                     }
+
+                    val lastWorker = workerStates[workerIdx]
+                    workerStates[workerIdx] = WorkerStatus(
+                        workerId = workerIdx,
+                        phase = WorkerPhase.DONE,
+                        currentHost = lastWorker?.currentHost ?: "—",
+                        hostStartedAtMs = 0L,
+                        hostElapsedMs = lastWorker?.hostElapsedMs ?: 0L,
+                        lastHostPingMs = lastWorker?.lastHostPingMs ?: 0L
+                    )
                 }
             }
             workers.joinAll()
+            tickerJob.cancel()
 
             val finalRows = collected.sortedBy { it.domain }
             repository.saveFetch(finalRows)
@@ -373,10 +496,19 @@ class VaultViewModel(
             } else {
                 "Synced to your cloud vault."
             }
+            val endSnapshot = buildTelemetrySnapshot(System.currentTimeMillis()).copy(
+                queueCount = 0,
+                workers = (1..3).map { id ->
+                    val ws = workerStates[id] ?: WorkerStatus(workerId = id)
+                    ws.copy(phase = WorkerPhase.DONE)
+                }
+            )
             _uiState.update {
                 it.copy(
                     isFetching = false,
                     fetchDiffs = diffNotes,
+                    merchantCacheCount = apiService.getMerchantCacheCount(),
+                    workerTelemetry = endSnapshot,
                     fetchStatusMessage = "Done. $okCount of ${finalRows.size} signed in. $storageLabel"
                 )
             }
@@ -389,9 +521,14 @@ class VaultViewModel(
         if (partialRows.isNotEmpty()) {
             repository.saveFetch(partialRows)
         }
-        _uiState.update {
-            it.copy(
+        _uiState.update { current ->
+            val resetWorkers = current.workerTelemetry.workers.map { w ->
+                w.copy(phase = WorkerPhase.IDLE, hostStartedAtMs = 0L)
+            }
+            current.copy(
                 isFetching = false,
+                merchantCacheCount = apiService.getMerchantCacheCount(),
+                workerTelemetry = current.workerTelemetry.copy(workers = resetWorkers),
                 fetchStatusMessage = "Stopped. ${partialRows.count { r -> r is AccountResult.Ok }} successful sign-ins saved to your vault."
             )
         }
@@ -487,18 +624,20 @@ class VaultViewModel(
         return null
     }
 
-    fun addBulkDomainsIntel(text: String): Int {
-        val lines = text.split("\n", ",", " ", "\t")
+    fun addBulkDomainsIntel(text: String, sourceLabel: String = ""): Int {
+        val lines = text.split("\n", "\r", ",", ";", " ", "\t")
         val parsed = lines.map { DomainUtil.normalizeDomain(it) }.filter { DomainUtil.isPublicDomain(it) }.distinct()
         if (parsed.isEmpty()) {
-            _uiState.update { it.copy(intelError = "No valid domains found in text.", intelNote = "") }
+            val errSource = if (sourceLabel.isNotBlank()) " in $sourceLabel" else " in file"
+            _uiState.update { it.copy(intelError = "No valid domains found$errSource.", intelNote = "") }
             return 0
         }
         val added = repository.addCustomDomains(parsed)
+        val suffix = if (sourceLabel.isNotBlank()) " from $sourceLabel" else ""
         _uiState.update {
             it.copy(
                 intelError = "",
-                intelNote = "Imported $added new domain${if (added == 1) "" else "s"} from ${parsed.size} found."
+                intelNote = "Imported $added new domain${if (added == 1) "" else "s"} (${parsed.size} total valid)$suffix."
             )
         }
         return added
@@ -780,6 +919,7 @@ class VaultViewModel(
                 it.copy(
                     isBonusLoading = false,
                     bonusCache = cacheMap,
+                    merchantCacheCount = apiService.getMerchantCacheCount(),
                     bonusStatusMessage = "Public bonuses loaded. No password was used."
                 )
             }
