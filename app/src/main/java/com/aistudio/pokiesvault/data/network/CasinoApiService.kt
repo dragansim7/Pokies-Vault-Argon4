@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.Dns
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -18,7 +19,9 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.InetAddress
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -64,20 +67,93 @@ class CasinoApiService {
     // do not re-download the homepage HTML multiple times for the same site
     private val merchantCache = ConcurrentHashMap<String, ResolvedMerchant>()
 
+    // Cache DNS-over-HTTPS (DoH) A-record lookups so Australian carrier DNS blocks/sinkholes
+    // are bypassed automatically on mobile devices
+    private val dohCache = ConcurrentHashMap<String, List<InetAddress>>()
+
+    private val bootstrapDnsClient = OkHttpClient.Builder()
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .build()
+
+    private val dohResolver = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            val cleanHost = hostname.trim().lowercase()
+            // Do not use DoH for the DoH bootstrap IP endpoints themselves
+            if (cleanHost == "1.1.1.1" || cleanHost == "8.8.8.8" || cleanHost == "dns.google" || cleanHost == "cloudflare-dns.com") {
+                return Dns.SYSTEM.lookup(hostname)
+            }
+            dohCache[cleanHost]?.let { if (it.isNotEmpty()) return it }
+
+            // 1. Query Cloudflare DoH (1.1.1.1) via direct IP so carrier DNS cannot intercept it
+            val cfAddresses = queryDohJson("https://1.1.1.1/dns-query?name=$cleanHost&type=A", cleanHost)
+            if (cfAddresses.isNotEmpty()) {
+                dohCache[cleanHost] = cfAddresses
+                return cfAddresses
+            }
+
+            // 2. Fallback to Google Public DNS DoH (8.8.8.8)
+            val googleAddresses = queryDohJson("https://8.8.8.8/resolve?name=$cleanHost&type=A", cleanHost)
+            if (googleAddresses.isNotEmpty()) {
+                dohCache[cleanHost] = googleAddresses
+                return googleAddresses
+            }
+
+            // 3. Fallback to system DNS
+            return Dns.SYSTEM.lookup(hostname)
+        }
+    }
+
+    private fun queryDohJson(url: String, hostname: String): List<InetAddress> {
+        return try {
+            val req = Request.Builder()
+                .url(url)
+                .header("Accept", "application/dns-json")
+                .get()
+                .build()
+            bootstrapDnsClient.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return emptyList()
+                val body = res.body?.string() ?: return emptyList()
+                val json = JSONObject(body)
+                val answers = json.optJSONArray("Answer") ?: return emptyList()
+                val result = mutableListOf<InetAddress>()
+                for (i in 0 until answers.length()) {
+                    val ans = answers.optJSONObject(i) ?: continue
+                    if (ans.optInt("type") == 1) { // A record
+                        val ipStr = ans.optString("data", "").trim()
+                        if (ipStr.isNotEmpty() && !ipStr.startsWith("127.") && ipStr != "0.0.0.0") {
+                            val parts = ipStr.split(".")
+                            if (parts.size == 4) {
+                                val bytes = ByteArray(4) { idx -> (parts[idx].toInt() and 0xFF).toByte() }
+                                result.add(InetAddress.getByAddress(hostname, bytes))
+                            }
+                        }
+                    }
+                }
+                result
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     // Per-host pacing locks to prevent simultaneous worker bursts against the same backend host
     private val hostMutexes = ConcurrentHashMap<String, Mutex>()
     private val hostLastRequestTs = ConcurrentHashMap<String, Long>()
 
     private val client = OkHttpClient.Builder()
+        .dns(dohResolver)
         .cookieJar(sessionCookieJar)
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(12, TimeUnit.SECONDS)
         .followRedirects(true)
+        .followSslRedirects(true)
         .retryOnConnectionFailure(true)
         .build()
 
     private val probeClient = OkHttpClient.Builder()
+        .dns(dohResolver)
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(7, TimeUnit.SECONDS)
         .followRedirects(false)
@@ -92,12 +168,15 @@ class CasinoApiService {
 
     private val secChUa = "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\""
 
-    private val merchantPattern = Pattern.compile("MERCHANTID\\s*=\\s*['\"]?(\\d+)['\"]?", Pattern.CASE_INSENSITIVE)
+    private val merchantPattern = Pattern.compile("MERCHANTID\\s*[:=]\\s*['\"]?(\\d+)['\"]?", Pattern.CASE_INSENSITIVE)
+    private val metaRefreshPattern = Pattern.compile("url\\s*=\\s*['\"]?(https?://[^'\"\\s>]+)", Pattern.CASE_INSENSITIVE)
+    private val jsLocationPattern = Pattern.compile("(?:window\\.)?location(?:\\.href)?\\s*=\\s*['\"](https?://[^'\"]+)['\"]", Pattern.CASE_INSENSITIVE)
 
     fun getMerchantCacheCount(): Int = merchantCache.size
 
     fun clearMerchantCache() {
         merchantCache.clear()
+        dohCache.clear()
     }
 
     /**
@@ -358,8 +437,8 @@ class CasinoApiService {
     }
 
     /**
-     * Resolves and caches the canonical host and MERCHANTID for a domain (TTL: 30 minutes).
-     * Eliminates redundant homepage scrapes when testing fallback credentials on the same domain.
+     * Resolves and caches the canonical host (preserving www. if redirected) and MERCHANTID for a domain.
+     * Follows HTML meta-refresh and JS window.location mirror redirects automatically.
      */
     private suspend fun resolveMerchantEndpoint(
         domain: String,
@@ -367,43 +446,74 @@ class CasinoApiService {
     ): ResolvedMerchant {
         val now = System.currentTimeMillis()
         val cached = merchantCache[domain]
-        if (cached != null && (now - cached.resolvedAt) < 30 * 60 * 1000L) {
+        if (cached != null && cached.supported && (now - cached.resolvedAt) < 30 * 60 * 1000L) {
             return cached
         }
 
-        val resolved = executeWithRetry(
-            hostForPacing = domain,
-            maxAttempts = 2,
-            onBackoff = onBackoff,
-            requestFactory = {
-                Request.Builder()
-                    .url("https://$domain/")
-                    .applyDocumentNavigationHeaders()
-                    .get()
-                    .build()
-            }
-        ) { response ->
-            val finalUrl = response.request.url
-            var host = DomainUtil.normalizeDomain(finalUrl.host)
-            if (!DomainUtil.isPublicDomain(host)) host = domain
+        var currentUrl = "https://$domain/"
+        var resolved = ResolvedMerchant(host = domain, merchantId = "", supported = false)
 
-            val html = response.body?.string() ?: ""
-            var merchantId = ""
-            val matcher = merchantPattern.matcher(html)
-            if (matcher.find()) {
-                merchantId = matcher.group(1) ?: ""
+        for (hop in 1..2) {
+            val targetUrl = currentUrl
+            val stepResult = executeWithRetry(
+                hostForPacing = domain,
+                maxAttempts = 2,
+                onBackoff = onBackoff,
+                requestFactory = {
+                    Request.Builder()
+                        .url(targetUrl)
+                        .applyDocumentNavigationHeaders()
+                        .get()
+                        .build()
+                }
+            ) { response ->
+                val finalUrl = response.request.url
+                // Preserve exact redirected host (including www.) so POST /api/v1/index.php
+                // does not hit a 301/302 redirect that strips the POST form body
+                val exactHost = finalUrl.host.trim().lowercase().ifBlank { domain }
+                val html = response.body?.string() ?: ""
+
+                var merchantId = ""
+                val matcher = merchantPattern.matcher(html)
+                if (matcher.find()) {
+                    merchantId = matcher.group(1) ?: ""
+                }
+                val supported = merchantId.isNotEmpty() ||
+                        html.contains("api/v1/index.php") ||
+                        html.contains("wallet/app.js")
+
+                var nextRedirectUrl: String? = null
+                if (!supported) {
+                    val metaMatcher = metaRefreshPattern.matcher(html)
+                    val jsMatcher = jsLocationPattern.matcher(html)
+                    if (metaMatcher.find()) {
+                        nextRedirectUrl = metaMatcher.group(1)
+                    } else if (jsMatcher.find()) {
+                        nextRedirectUrl = jsMatcher.group(1)
+                    }
+                }
+
+                Pair(
+                    ResolvedMerchant(
+                        host = exactHost,
+                        merchantId = merchantId,
+                        supported = supported
+                    ),
+                    nextRedirectUrl
+                )
             }
-            val supported = merchantId.isNotEmpty() ||
-                    html.contains("api/v1/index.php") ||
-                    html.contains("wallet/app.js")
-            ResolvedMerchant(
-                host = host,
-                merchantId = merchantId,
-                supported = supported
-            )
+
+            resolved = stepResult.first
+            val nextUrl = stepResult.second
+            if (resolved.supported || nextUrl.isNullOrBlank()) {
+                break
+            }
+            currentUrl = nextUrl
         }
 
-        merchantCache[domain] = resolved
+        if (resolved.supported && resolved.merchantId.isNotEmpty()) {
+            merchantCache[domain] = resolved
+        }
         return resolved
     }
 
@@ -591,6 +701,35 @@ class CasinoApiService {
         }
     }
 
+    private fun buildPhoneCandidates(phoneRaw: String): List<String> {
+        val digits = phoneRaw.replace(Regex("[^0-9]"), "")
+        if (digits.length < 6 || digits.length > 20) return emptyList()
+        val candidates = LinkedHashSet<String>()
+        when {
+            digits.startsWith("04") && digits.length == 10 -> {
+                candidates.add(digits) // 04xxxxxxxx
+                candidates.add("61" + digits.substring(1)) // 614xxxxxxxx
+            }
+            digits.startsWith("6104") && digits.length == 12 -> {
+                val local = "0" + digits.substring(3)
+                candidates.add(local) // 04xxxxxxxx
+                candidates.add("61" + digits.substring(3)) // 614xxxxxxxx
+            }
+            digits.startsWith("614") && digits.length == 11 -> {
+                candidates.add("0" + digits.substring(2)) // 04xxxxxxxx
+                candidates.add(digits) // 614xxxxxxxx
+            }
+            digits.startsWith("4") && digits.length == 9 -> {
+                candidates.add("0$digits") // 04xxxxxxxx
+                candidates.add("61$digits") // 614xxxxxxxx
+            }
+            else -> {
+                candidates.add(digits)
+            }
+        }
+        return candidates.toList()
+    }
+
     suspend fun fetchCasinoAccount(
         rawDomain: String,
         phoneRaw: String,
@@ -601,13 +740,15 @@ class CasinoApiService {
         if (!DomainUtil.isPublicDomain(domain)) {
             return@withContext AccountResult.Err(domain, "other", "Enter a real site domain")
         }
-        val phone = phoneRaw.replace("[\\s\\-()]".toRegex(), "")
-        if (!Regex("^[0-9+]{6,20}$").matches(phone)) {
+        val phoneCandidates = buildPhoneCandidates(phoneRaw)
+        if (phoneCandidates.isEmpty()) {
             return@withContext AccountResult.Err(domain, "other", "Enter the mobile number you use on these sites")
         }
-        if (passwordRaw.length < 4 || passwordRaw.length > 64) {
+        val passwordTrimmed = passwordRaw.trim()
+        if (passwordTrimmed.length < 4 || passwordTrimmed.length > 64) {
             return@withContext AccountResult.Err(domain, "other", "Password should be 4–64 characters")
         }
+        val passwordCandidates = listOf(passwordTrimmed, passwordRaw).distinct()
 
         try {
             // Step 0: Resolve (or reuse cached) merchantId & canonical host
@@ -623,41 +764,58 @@ class CasinoApiService {
             val host = endpoint.host
             val merchantId = endpoint.merchantId
 
-            // Step 1: Login with retry & rate-limit backoff
+            // Step 1: Login with retry & automatic AU phone format (04.. / 614..) fallback
             onPhaseChange(WorkerPhase.AUTHENTICATING)
-            val loginBody = FormBody.Builder()
-                .add("module", "/users/login")
-                .add("merchantId", merchantId)
-                .add("accessId", "")
-                .add("accessToken", "")
-                .add("walletIsAdmin", "")
-                .add("mobile", phone)
-                .add("password", passwordRaw)
-                .build()
+            var loginJson: JSONObject? = null
+            var lastLoginErrorMsg = "Could not sign in"
 
-            val loginJson = executeWithRetry(
-                hostForPacing = host,
-                maxAttempts = 3,
-                onBackoff = { onPhaseChange(WorkerPhase.BACKOFF) },
-                requestFactory = {
-                    onPhaseChange(WorkerPhase.AUTHENTICATING)
-                    Request.Builder()
-                        .url("https://$host/api/v1/index.php")
-                        .applySameOriginAjaxHeaders(host)
-                        .post(loginBody)
+            loginLoop@ for (mobileCandidate in phoneCandidates) {
+                for (passCandidate in passwordCandidates) {
+                    val loginBody = FormBody.Builder()
+                        .add("module", "/users/login")
+                        .add("merchantId", merchantId)
+                        .add("accessId", "")
+                        .add("accessToken", "")
+                        .add("walletIsAdmin", "")
+                        .add("mobile", mobileCandidate)
+                        .add("password", passCandidate)
                         .build()
+
+                    val attemptJson = executeWithRetry(
+                        hostForPacing = host,
+                        maxAttempts = 3,
+                        onBackoff = { onPhaseChange(WorkerPhase.BACKOFF) },
+                        requestFactory = {
+                            onPhaseChange(WorkerPhase.AUTHENTICATING)
+                            Request.Builder()
+                                .url("https://$host/api/v1/index.php")
+                                .applySameOriginAjaxHeaders(host)
+                                .post(loginBody)
+                                .build()
+                        }
+                    ) { res ->
+                        val str = res.body?.string()?.trim() ?: throw IOException("empty-login")
+                        if (!str.startsWith("{")) throw IOException("bad-json")
+                        JSONObject(str)
+                    }
+
+                    if (attemptJson.optString("status") == "SUCCESS") {
+                        loginJson = attemptJson
+                        break@loginLoop
+                    } else {
+                        val dataObj = attemptJson.optJSONObject("data")
+                        lastLoginErrorMsg = dataObj?.optString("message")
+                            ?: attemptJson.optString("message", "Could not sign in")
+                        val classified = classifyFailure(domain, lastLoginErrorMsg)
+                        if (classified is AccountResult.Err && classified.code != "invalid_login") {
+                            return@withContext classified
+                        }
+                    }
                 }
-            ) { res ->
-                val str = res.body?.string()?.trim() ?: throw IOException("empty-login")
-                if (!str.startsWith("{")) throw IOException("bad-json")
-                JSONObject(str)
             }
 
-            val loginStatus = loginJson.optString("status")
-            if (loginStatus != "SUCCESS") {
-                val dataObj = loginJson.optJSONObject("data")
-                val msg = dataObj?.optString("message") ?: loginJson.optString("message", "Could not sign in")
-                return@withContext classifyFailure(domain, msg)
+            if (loginJson == null) {
+                return@withContext classifyFailure(domain, lastLoginErrorMsg)
             }
 
             val dataObj = loginJson.optJSONObject("data") ?: throw IOException("no-data")
